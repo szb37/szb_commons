@@ -1,5 +1,5 @@
 pID,tp,time,measure_type,instrument,measure,score,delta_score
-1021,B0,15.0,in_dose,INT,INT_pat_int,1.0,
+1021,B0,15.0,in_dose,INT,INT_pat_int,1.0,0.0
 1021,B0,30.0,in_dose,INT,INT_pat_int,8.0,7.0
 1021,B0,45.0,in_dose,INT,INT_pat_int,10.0,9.0
 1021,B0,60.0,in_dose,INT,INT_pat_int,10.0,9.0
@@ -35,12 +35,12 @@ pID,tp,time,measure_type,instrument,measure,score,delta_score
 1076,B28,,change,ULS,ULS,21.0,-2.0
 1076,C28,,change,ULS,ULS,19.0,-4.0
 1076,D28,,change,ULS,ULS,16.0,-7.0
-1076,bsl,,change,ULS,ULS,23.0,
+1076,bsl,,change,ULS,ULS,23.0,0.0
 1100,A28,,change,ULS,ULS,17.0,3.0
 1100,B28,,change,ULS,ULS,15.0,1.0
 1100,C28,,change,ULS,ULS,16.0,2.0
 1100,D28,,change,ULS,ULS,17.0,3.0
-1100,bsl,,change,ULS,ULS,14.0,
+1100,bsl,,change,ULS,ULS,14.0,0.0
 1021,A0,,post_dose,EBI,EBI,80.0,
 1021,B0,180.0,post_dose,EBI,EBI,55.0,
 1021,C0,,post_dose,EBI,EBI,13.33,

@@ -171,7 +171,6 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             col_items = [],
             col_score = 'tadaa',
-            norm = False,
             col_complete = 'ebi_complete')
 
         # Get manual solution
@@ -190,7 +189,6 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
-            norm = False,
             col_complete = 'ebi_complete')
 
         # Get manual solution
@@ -209,7 +207,6 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
-            norm = False,
             col_complete = 'ebi_complete')
 
         # Get manual solution
@@ -220,15 +217,14 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-        ''' Normalize '''
-
+        ### Normalize by_item_number case
         # Calculate
         df = core.DataWrangl.add_sum_scores(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
-            norm = True,
-            col_complete = 'ebi_complete')
+            col_complete = 'ebi_complete',
+            normalize = 'by_item_number',)
 
         # Get manual solution
         df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_add_sum_scores_case21.csv'))
@@ -238,8 +234,44 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
+        ### Normalize by_max_value case
+        # Calculate
+        df = core.DataWrangl.add_sum_scores(
+            df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
+            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+            col_score = 'tadaa',
+            col_complete = 'ebi_complete',
+            normalize = 'by_max_value',
+            max_value = 5,)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_add_sum_scores_case22.csv'))
+
+        # Compare
+        df_solution.reset_index(drop=True, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        assert df_solution.equals(df)
+
+        ### Normalize by_max_value case; change max value
+        # Calculate
+        df = core.DataWrangl.add_sum_scores(
+            df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
+            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+            col_score = 'tadaa',
+            col_complete = 'ebi_complete',
+            normalize = 'by_max_value',
+            max_value = 2,)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_add_sum_scores_case23.csv'))
+
+        # Compare
+        df_solution.reset_index(drop=True, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        assert df_solution.equals(df)
+
     def test_add_sum_scores_case3(self):
-        ''' Missing data case. Should also produce print:
+        ''' Missing data case. Should also produce print (use "python -m pytest -s .\tests\" to see in terminal):
                 'add_sum_scores' sums incomplete columns at row index: 0
                 'add_sum_scores' sums incomplete columns at row index: 1
         '''
@@ -254,7 +286,6 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = df_redcap,
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
-            norm = False,
             col_complete = 'ebi_complete')
 
         # Get manual solution

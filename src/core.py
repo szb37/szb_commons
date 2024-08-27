@@ -61,7 +61,7 @@ class DataWrangl:
         return df_measure
 
     @staticmethod # done
-    def add_sum_scores(df_redcap, col_complete, col_items, col_score, norm):
+    def add_sum_scores(df_redcap, col_complete, col_items, col_score, **kwargs):
         ''' Calculates the sum of scores for columns in 'col_items' and adds the
             sum score to 'col_score' row of the input dataframe.
             Designed to work with wide format REDCap dfs.
@@ -71,7 +71,7 @@ class DataWrangl:
                 - col_items (list of strs): list of columns that are summed
                 - col_complete (str): name of column that defined whether row is complete
                 - col_score (str): name of column where the sum scores are added
-                - norm (bool): should the value in col_score be normlaized, i.e. divided by the number of items in 'col_items'
+                ######- norm (bool): should the value in col_score be normlaized, i.e. divided by the number of items in 'col_items'
 
             Returns:
                 - df_redcap (pd.DataFrame): REDCap df with col_score added
@@ -81,7 +81,6 @@ class DataWrangl:
         assert isinstance(col_items, list)
         assert all([col_item in df_redcap.columns for col_item in col_items])
         assert isinstance(col_score, str)
-        assert isinstance(norm, bool)
         assert col_complete in df_redcap.columns
 
         # Check if summed columns do not have missing data
@@ -98,13 +97,19 @@ class DataWrangl:
         # Sum scores
         df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
 
-        # Normlaize if needed
-        if norm:
-            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_score] / len(col_items)
+        # Normalize sum scores if needed
+        if 'normalize' in kwargs:
+
+            if kwargs['normalize']=='by_item_number':
+                norm_factor = len(col_items)
+            elif kwargs['normalize']=='by_max_value':
+                norm_factor = len(col_items)*kwargs['max_value']
+
+            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_score] / norm_factor
 
         return df_redcap
 
-    @staticmethod # done
+    @staticmethod # done55
     def add_delta_scores(df_master, delta_from_tp='bsl', delta_from_time=0):
         ''' For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is NaN
             For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is not-NaN
@@ -126,8 +131,8 @@ class DataWrangl:
 
         for row in df_master.itertuples():
 
-            if (row.tp==delta_from_tp) or (row.time==delta_from_time):
-                continue
+            #if (row.tp==delta_from_tp) or (row.time==delta_from_time):
+            #    continue
 
             try:
                 has_time = Helpers.has_time(df_master, row.measure)
@@ -167,43 +172,55 @@ class DataWrangl:
 
         return df_master
 
-    @staticmethod # Will most likely delete
-    def find_delta_max_ARCHIVE(df_vitals, pos_delta_only=True, return_dmax=True):
-        '''
-            if return_dmax is True then returns dmax itself, otherwise returns value at dmax
-        '''
 
-        assert isinstance(df_vitals, pd.DataFrame)
-        assert isinstance(return_dmax, bool)
-        assert isinstance(pos_delta_only, bool)
-        assert len(df_vitals[(df_vitals['time']==0)].index)==1
-        assert 'time' in df_vitals.columns
-        assert 'score' in df_vitals.columns
+class Analusis:
 
-        df_vitals = df_vitals.reset_index()
-        score_col_idx = df_vitals.columns.get_loc('score')
+    @staticmethod
+    def get_df_observed_scores(df, fname_out='bap1_observed_scores.csv', save=False):
+        """ Creates a dataframe with the observed mean±SD of all measures at every tp
+            Args:
+                - df(pd.DataFrame): long-form master dataframe containing all data
+                - fname_out(str): name of output CSV saved at folders.exports
+                - save(bool): save results?
 
-        t0_row_idx = df_vitals[(df_vitals['time']==0)].index[0]
-        t0_value = df_vitals.iloc[t0_row_idx, score_col_idx]
+            Returns:
+                - df(pd.DataFrame): dataframe of observed mean±SD of all measures at every tp
+        """
 
-        idx_max = t0_row_idx
-        delta_max = math.nan
+        master_df = pd.DataFrame(columns=['measure', 'tp', 'obs'])
 
-        for idx in df_vitals.index:
+        for measure in config.measures_dict.keys():
+            measure_df = df.loc[(df.measure==measure)]
 
-            if pos_delta_only:
-                delta = df_vitals.iloc[idx, score_col_idx]-t0_value
-            else:
-                delta = abs(df_vitals.iloc[idx, score_col_idx]-t0_value)
+            for tp in measure_df.tp.unique():
 
-            if (delta>delta_max) or math.isnan(delta_max):
-                idx_max = idx
-                delta_max = delta
+                observed_dict={'measure':[], 'tp':[], 'obs':[]}
+                observed_dict['measure'].append(measure)
 
-        if return_dmax:
-            return (df_vitals.iloc[idx_max, score_col_idx]-t0_value)
-        else:
-            return df_vitals.iloc[idx_max, score_col_idx]
+                scores = measure_df.loc[(measure_df.tp==tp)].score
+                scores = scores.dropna()
+
+                observed_dict['tp'].append(tp)
+                if measure == 'BRQ':
+                    observed_dict['obs'].append(
+                        f'{round(mean(scores))}±{round(stdev(scores))}')
+                else:
+                    observed_dict['obs'].append(
+                        f'{round(mean(scores),1)}±{round(stdev(scores), 1)}')
+
+                master_df = pd.concat([master_df, pd.DataFrame(observed_dict)])
+
+        master_df.reset_index(drop=True, inplace=True)
+        master_df = master_df.pivot(index='measure', columns='tp', values='obs')
+        master_df = master_df[['bsl',
+            'A0', 'A1', 'A7', 'A11', 'A14', 'A21', 'A26', 'A90',
+            'B0', 'B1', 'B7', 'B11', 'B14', 'B21', 'B90',]]
+
+        if save:
+            master_df.to_csv(os.path.join(folders.exports, fname_out), index=True, encoding='latin1')
+
+        return master_df
+
 
 
 class Plots:
@@ -235,14 +252,14 @@ class Plots:
             patch.set_facecolor((r, g, b, alpha))
 
     @staticmethod # done
-    def draw_corrmat(df_coeffs, df_pvalues, out_dir, out_fname, save=True, **kwargs):
+    def draw_corrmat(df_coeffs, df_pvalues, out_dir, fname_out, save=True, **kwargs):
         ''' Draws correlation matrix heatmap using outputs of get_corrmat()
 
             Args:
                 df_coeffs (pd.DataFrame): dataframe of correlation coefficients
                 df_pvalues (pd.DataFrame): dataframe of correlation p-values
                 out_dir (str): where to save fig
-                out_fname (str): name of file saves
+                fname_out (str): name of file saves
                 save (bool): should image be save
         '''
 
@@ -250,7 +267,7 @@ class Plots:
         assert isinstance(df_pvalues, pd.DataFrame)
         assert isinstance(save, bool)
         assert isinstance(out_dir, str)
-        assert isinstance(out_fname, str)
+        assert isinstance(fname_out, str)
 
         fig, ax = plt.subplots(dpi=300)
 
@@ -279,36 +296,36 @@ class Plots:
             save_fig(
                 fig = fig,
                 out_dir  = out_dir,
-                filename = out_fname,
+                filename = fname_out,
                 save_PNG = True,
                 save_SVG = True,)
 
     @staticmethod # done
-    def save_fig(fig, out_dir, out_fname, save_PNG, save_SVG,):
+    def save_fig(fig, out_dir, fname_out, save_PNG, save_SVG,):
         ''' Saves and then closes figure
 
             Args:
                 - save_PNG (bool): save fig as PNG?
                 - save_SVG (bool): save fig as SVG?
                 - out_dir (str): where to save fig
-                - out_fname (str): name of file saves
+                - fname_out (str): name of file saves
         '''
 
         assert isinstance(save_PNG, bool)
         assert isinstance(save_SVG, bool)
         assert isinstance(out_dir, str)
-        assert isinstance(out_fname, str)
+        assert isinstance(fname_out, str)
 
         if save_PNG:
             fig.savefig(
-                fname=os.path.join(out_dir, f'{filename}.png'),
+                fname=os.path.join(out_dir, f'{fname_out}.png'),
                 bbox_inches='tight',
                 format='png',
                 dpi=300,)
 
         if save_SVG:
             fig.savefig(
-                fname=os.path.join(out_dir, f'{filename}.svg'),
+                fname=os.path.join(out_dir, f'{fname_out}.svg'),
                 bbox_inches='tight',
                 format='svg',
                 dpi=300,)
@@ -316,7 +333,7 @@ class Plots:
         plt.close()
 
 
-class CheckDF:
+class CheckDf:
     ''' Check assumptions about longform master DFs '''
 
     @staticmethod # done
@@ -325,11 +342,11 @@ class CheckDF:
 
         assert isinstance(df, pd.DataFrame)
 
-        check_duplicate_rows(df)
-        check_baseline_condition(df)
-        check_indose_time(df)
-        check_score_delta_score(df)
-        check_measure_type(df)
+        CheckDf.check_duplicate_rows(df)
+        CheckDf.check_baseline_condition(df)
+        CheckDf.check_indose_time(df)
+        CheckDf.check_score_delta_score(df)
+        CheckDf.check_measure_type(df)
 
     @staticmethod # done
     def check_duplicate_rows(df, cols=['pID', 'tp', 'measure', 'time']):
@@ -360,8 +377,8 @@ class CheckDF:
 
         assert isinstance(df, pd.DataFrame)
 
-        assert all(math.isnan(time) for time in df.loc[(df.type!='in_dose')].time.tolist())
-        assert all(isinstance(time, float) for time in df.loc[(df.type=='in_dose')].time.tolist())
+        assert all(math.isnan(time) for time in df.loc[(df.measure_type!='in_dose')].time.tolist())
+        assert all(isinstance(time, float) for time in df.loc[(df.measure_type=='in_dose')].time.tolist())
 
     @staticmethod # done
     def check_score_delta_score(df):
@@ -374,10 +391,10 @@ class CheckDF:
         assert all([isinstance(delta_score, float) for delta_score in df.delta_score])
 
         # There should be no delta_score for post_dose measures and at baseline
-        assert all([math.isnan(delta_score) for delta_score in df.loc[(df.type=='post_dose')].delta_score])
-        assert all([math.isnan(delta_score) for delta_score in df.loc[(df.type=='bsl')].delta_score])
+        assert all([math.isnan(delta_score) for delta_score in df.loc[(df.measure_type=='post_dose')].delta_score])
+        assert all([math.isnan(delta_score) for delta_score in df.loc[(df.measure_type=='bsl')].delta_score])
 
-        missing_baselines = df.loc[(df.type=='change') & pd.isna(df.delta_score)]
+        missing_baselines = df.loc[(df.measure_type=='change') & pd.isna(df.delta_score)]
         if missing_baselines.shape[0]!=0:
             print("Missing some delta_scores for 'change' instruments (baseline missing?):")
             print(missing_baselines)
@@ -450,7 +467,7 @@ class Helpers:
         return has_time
 
     @staticmethod
-    def get_corrmat(df, method, vars1, vars2, out_dir, out_fname, save=True):
+    def get_corrmat(df, method, vars1, vars2, out_dir, fname_out, save=True):
         """ Calculates and visalizes the correlation between all predictors and timepoints
             Args:
                 df (pd.DataFrame): wide-format dataframe where all elements of vars1 and vars2 are columns
