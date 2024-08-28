@@ -32,7 +32,7 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v0.csv')),
             measure = {
                 'instrument': 'EBI',
-                'type': 'post_dose',
+                'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': None,
                 'col_score': 'ebi_score',})
@@ -55,7 +55,7 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             measure = {
                 'instrument': 'EBI',
-                'type': 'post_dose',
+                'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -77,7 +77,7 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             measure = {
                 'instrument': 'EBI',
-                'type': 'post_dose',
+                'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': None,
                 'col_score': 'ebi_score',})
@@ -104,7 +104,7 @@ class DataWranglTests(unittest.TestCase):
             df_redcap = df_redcap1,
             measure = {
                 'instrument': 'EBI',
-                'type': 'post_dose',
+                'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -127,7 +127,7 @@ class DataWranglTests(unittest.TestCase):
             cols_to_keep = ['pID', 'tp', 'ebi_1', 'ebi_2'],
             measure = {
                 'instrument': 'EBI',
-                'type': 'post_dose',
+                'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -149,7 +149,7 @@ class DataWranglTests(unittest.TestCase):
             cols_to_keep = [],
             measure = {
                 'instrument': 'EBI',
-                'type': 'post_dose',
+                'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -346,4 +346,50 @@ class DataWranglTests(unittest.TestCase):
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
+        assert df_solution.equals(df)
+
+
+class AnalysisTests(unittest.TestCase):
+
+    def test_get_df_observed_case1(self):
+        ''' Intended use case '''
+
+        # Calculate
+        df = core.Analysis.get_df_observed(
+            df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v0.csv')),)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case1.csv'), index_col=0)
+
+        # Compare
+        assert df_solution.equals(df)
+
+    def test_get_df_observed_case2(self):
+        ''' Check if measures and tp inputs work as intended '''
+
+        # Calculate
+        df = core.Analysis.get_df_observed(
+            df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v0.csv')),
+            measures = ['MADRS'],
+            tps = ['bsl', 'A7', 'A21'],)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case2.csv'), index_col=0)
+
+        # Compare
+        assert df_solution.equals(df)
+
+    def test_get_df_observed_case3(self):
+        ''' Check if digits inputs work as intended '''
+
+        # Calculate
+        df = core.Analysis.get_df_observed(
+            df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v0.csv')),
+            digits = 2,
+            digits_measure = {'MADRS':3, 'YMRS':4})
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case3.csv'), index_col=0)
+
+        # Compare
         assert df_solution.equals(df)

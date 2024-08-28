@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from statistics import mean, stdev
 from scipy import stats
 import seaborn as sns
 import pandas as pd
@@ -8,7 +9,7 @@ import math
 import os
 
 
-class DataWrangl:
+class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
     @staticmethod # done
@@ -36,7 +37,7 @@ class DataWrangl:
         assert isinstance(df_redcap, pd.DataFrame)
         assert isinstance(measure, dict)
         assert all([field in measure.keys() for field in
-            ['instrument', 'measure', 'type', 'col_complete', 'col_score']])
+            ['instrument', 'measure', 'measure_type', 'col_complete', 'col_score']])
         assert isinstance(cols_to_keep, list)
 
         # define variables
@@ -56,7 +57,7 @@ class DataWrangl:
         df_measure['score'] = df_measure['score'].astype('float64')
         df_measure['instrument'] = measure['instrument']
         df_measure['measure'] = measure['measure']
-        df_measure['measure_type'] = measure['type']
+        df_measure['measure_type'] = measure['measure_type']
 
         return df_measure
 
@@ -109,7 +110,7 @@ class DataWrangl:
 
         return df_redcap
 
-    @staticmethod # done55
+    @staticmethod # done
     def add_delta_scores(df_master, delta_from_tp='bsl', delta_from_time=0):
         ''' For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is NaN
             For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is not-NaN
@@ -130,9 +131,6 @@ class DataWrangl:
         undecided_has_time=[]
 
         for row in df_master.itertuples():
-
-            #if (row.tp==delta_from_tp) or (row.time==delta_from_time):
-            #    continue
 
             try:
                 has_time = Helpers.has_time(df_master, row.measure)
@@ -173,57 +171,68 @@ class DataWrangl:
         return df_master
 
 
-class Analusis:
+class Analysis():
 
     @staticmethod
-    def get_df_observed_scores(df, fname_out='bap1_observed_scores.csv', save=False):
+    def get_df_observed(df_master, fname_out='bap1_observed_scores.csv', save=False, digits=1, **kwargs):
         """ Creates a dataframe with the observed mean±SD of all measures at every tp
             Args:
-                - df(pd.DataFrame): long-form master dataframe containing all data
+                - df_master (pd.DataFrame): long-form master dataframe containing all data
                 - fname_out(str): name of output CSV saved at folders.exports
-                - save(bool): save results?
+                - save (bool): save results?
 
             Returns:
-                - df(pd.DataFrame): dataframe of observed mean±SD of all measures at every tp
+                - df_observed(pd.DataFrame): dataframe of observed mean±SD of all measures at every tp
         """
 
-        master_df = pd.DataFrame(columns=['measure', 'tp', 'obs'])
+        # get what measures and tps will be in df, initate df_observed
+        if 'measures' in kwargs:
+            measures = kwargs['measures']
+        else:
+            measures = df_master.measure.unique().tolist()
 
-        for measure in config.measures_dict.keys():
-            measure_df = df.loc[(df.measure==measure)]
+        if 'tps' in kwargs:
+            tps = kwargs['tps']
+        else:
+            tps = df_master.tp.unique().tolist()
 
-            for tp in measure_df.tp.unique():
+        df_observed = pd.DataFrame(columns=tps, index=measures)
 
-                observed_dict={'measure':[], 'tp':[], 'obs':[]}
-                observed_dict['measure'].append(measure)
+        # loop through measures and tps, calculate mean±SD for each cell
+        for measure, tp in itertools.product(measures, tps) :
 
-                scores = measure_df.loc[(measure_df.tp==tp)].score
-                scores = scores.dropna()
+            scores = df_master.loc[(df_master.measure==measure) & (df_master.tp==tp)].score.tolist()
+            if len(scores)<3: # skip if not enough data to calc SD
+                continue
 
-                observed_dict['tp'].append(tp)
-                if measure == 'BRQ':
-                    observed_dict['obs'].append(
-                        f'{round(mean(scores))}±{round(stdev(scores))}')
+            ridx = df_observed.index.get_loc(measure)
+            cidx = df_observed.columns.get_loc(tp)
+
+            # calculate mean±SD for appropiate number of digits
+            if 'digits_measure' in kwargs:
+                if measure in kwargs['digits_measure'].keys():
+                    digits_tmp = kwargs['digits_measure'][measure] # set temporary number of digits
+                    value_cell = f'{round(mean(scores), digits_tmp)}±{round(stdev(scores), digits_tmp)}'
                 else:
-                    observed_dict['obs'].append(
-                        f'{round(mean(scores),1)}±{round(stdev(scores), 1)}')
+                    value_cell = f'{round(mean(scores), digits)}±{round(stdev(scores), digits)}'
+            else:
+                value_cell = f'{round(mean(scores), digits)}±{round(stdev(scores), digits)}'
 
-                master_df = pd.concat([master_df, pd.DataFrame(observed_dict)])
+            df_observed.iloc[ridx, cidx] = value_cell
 
-        master_df.reset_index(drop=True, inplace=True)
-        master_df = master_df.pivot(index='measure', columns='tp', values='obs')
-        master_df = master_df[['bsl',
-            'A0', 'A1', 'A7', 'A11', 'A14', 'A21', 'A26', 'A90',
-            'B0', 'B1', 'B7', 'B11', 'B14', 'B21', 'B90',]]
+        # sort columns and rows
+        df_observed = df_observed.sort_index()
+        tps.sort(key=lambda x: (x != 'bsl', x))
+        df_observed = df_observed[tps]
 
+        # save & return
         if save:
-            master_df.to_csv(os.path.join(folders.exports, fname_out), index=True, encoding='latin1')
+            df_observed.to_csv(os.path.join(kwargs['dir_out'], fname_out), index=True, encoding='latin1')
 
-        return master_df
+        return df_observed
 
 
-
-class Plots:
+class Plots():
     ''' Functions to help with figures '''
 
     @staticmethod # done
@@ -333,7 +342,7 @@ class Plots:
         plt.close()
 
 
-class CheckDf:
+class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
     @staticmethod # done
@@ -408,7 +417,7 @@ class CheckDf:
         assert all([measure_type in ['bsl', 'change', 'in_dose', 'post_dose'] for measure_type in df.measure_type])
 
 
-class Helpers:
+class Helpers():
     ''' Various helper functions '''
 
     @staticmethod
