@@ -180,6 +180,7 @@ class Analysis():
                 - df_master (pd.DataFrame): long-form master dataframe containing all data
                 - fname_out(str): name of output CSV saved at folders.exports
                 - save (bool): save results?
+                - digits (int): round mean and SD to how many digits?
 
             Returns:
                 - df_observed(pd.DataFrame): dataframe of observed mean±SD of all measures at every tp
@@ -346,75 +347,75 @@ class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
     @staticmethod # done
-    def check_masterDf(df):
-        ''' Check if longform master df for all assumptions '''
+    def check_masterDf(df_master, measure_types=['bsl', 'change', 'in_dose', 'post_dose']):
+        ''' Check if longform master df_master for all assumptions '''
 
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df_master, pd.DataFrame)
 
-        CheckDf.check_duplicate_rows(df)
-        CheckDf.check_baseline_condition(df)
-        CheckDf.check_indose_time(df)
-        CheckDf.check_score_delta_score(df)
-        CheckDf.check_measure_type(df)
+        CheckDf.check_duplicate_rows(df_master)
+        CheckDf.check_baseline_condition(df_master)
+        CheckDf.check_indose_time(df_master)
+        CheckDf.check_score_delta_score(df_master)
+        CheckDf.check_measure_types(df_master, measure_types)
 
     @staticmethod # done
-    def check_duplicate_rows(df, cols=['pID', 'tp', 'measure', 'time']):
+    def check_duplicate_rows(df_master, cols=['pID', 'tp', 'measure', 'time']):
         ''' Check if there are duplicate rows '''
 
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df_master, pd.DataFrame)
 
-        df = df[cols]
-        duplicate_rows = df[df.duplicated(keep=False)]
+        df_master = df_master[cols]
+        duplicate_rows = df_master[df_master.duplicated(keep=False)]
         if duplicate_rows.shape[0]!=0:
             print(f'There are {duplicate_rows.shape[0]} duplicate rows across {cols}.')
             print(duplicate_rows)
 
     @staticmethod # done
-    def check_baseline_condition(df):
+    def check_baseline_condition(df_master):
         ''' Check if there is a condition for every tp except baseline '''
 
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df_master, pd.DataFrame)
 
-        assert all([condition is None for condition in df.loc[(df.tp=='bsl')].condition])
-        assert all([isinstance(condition, str) for condition in df.loc[(df.tp!='bsl')].condition])
+        assert all([condition is None for condition in df_master.loc[(df_master.tp=='bsl')].condition])
+        assert all([isinstance(condition, str) for condition in df_master.loc[(df_master.tp!='bsl')].condition])
 
     @staticmethod # done
-    def check_indose_time(df):
+    def check_indose_time(df_master):
         ''' Check if there is time for all in_dose measures and that there is
             no time for not in_dose measures
         '''
 
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df_master, pd.DataFrame)
 
-        assert all(math.isnan(time) for time in df.loc[(df.measure_type!='in_dose')].time.tolist())
-        assert all(isinstance(time, float) for time in df.loc[(df.measure_type=='in_dose')].time.tolist())
+        assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
+        assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
     @staticmethod # done
-    def check_score_delta_score(df):
+    def check_score_delta_score(df_master):
         ''' Check if there is time for all in_dose measures and that there is
             no time for not in_dose measures
         '''
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df_master, pd.DataFrame)
 
-        assert all([isinstance(score, float) for score in df.score])
-        assert all([isinstance(delta_score, float) for delta_score in df.delta_score])
+        assert all([((isinstance(score, float)) or (isinstance(score, int))) for score in df_master.score])
+        assert all([((isinstance(delta_score, float)) or (isinstance(delta_score, int))) for delta_score in df_master.delta_score])
 
         # There should be no delta_score for post_dose measures and at baseline
-        assert all([math.isnan(delta_score) for delta_score in df.loc[(df.measure_type=='post_dose')].delta_score])
-        assert all([math.isnan(delta_score) for delta_score in df.loc[(df.measure_type=='bsl')].delta_score])
+        assert all([math.isnan(delta_score) for delta_score in df_master.loc[(df_master.measure_type=='post_dose')].delta_score])
+        assert all([delta_score==0 for delta_score in df_master.loc[(df_master.tp=='bsl')].delta_score])
 
-        missing_baselines = df.loc[(df.measure_type=='change') & pd.isna(df.delta_score)]
+        missing_baselines = df_master.loc[(df_master.measure_type=='change') & pd.isna(df_master.delta_score)]
         if missing_baselines.shape[0]!=0:
             print("Missing some delta_scores for 'change' instruments (baseline missing?):")
             print(missing_baselines)
 
     @staticmethod # done
-    def check_measure_type(df):
+    def check_measure_types(df_master, measure_types):
         ''' Check if all measure_type is one of the defined values
         '''
 
-        assert isinstance(df, pd.DataFrame)
-        assert all([measure_type in ['bsl', 'change', 'in_dose', 'post_dose'] for measure_type in df.measure_type])
+        assert isinstance(df_master, pd.DataFrame)
+        assert all([measure_type in measure_types for measure_type in df_master.measure_type])
 
 
 class Helpers():
