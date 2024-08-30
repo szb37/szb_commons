@@ -5,14 +5,18 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import itertools
+import warnings
 import math
 import os
+
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
-    @staticmethod # done
+    @staticmethod
     def get_longdf_of_measure(df_redcap, measure, cols_to_keep=['pID', 'tp']):
         ''' Extracts the scores associated with 'measure' from the raw REDCap df,
             where 'measure' is a dictionary defining what columns are taken from
@@ -61,7 +65,7 @@ class DataWrangl():
 
         return df_measure
 
-    @staticmethod # done
+    @staticmethod
     def add_sum_scores(df_redcap, col_complete, col_items, col_score, **kwargs):
         ''' Calculates the sum of scores for columns in 'col_items' and adds the
             sum score to 'col_score' row of the input dataframe.
@@ -72,7 +76,7 @@ class DataWrangl():
                 - col_items (list of strs): list of columns that are summed
                 - col_complete (str): name of column that defined whether row is complete
                 - col_score (str): name of column where the sum scores are added
-                ######- norm (bool): should the value in col_score be normlaized, i.e. divided by the number of items in 'col_items'
+                - norm (bool): should the value in col_score be normlaized, i.e. divided by the number of items in 'col_items'
 
             Returns:
                 - df_redcap (pd.DataFrame): REDCap df with col_score added
@@ -85,18 +89,20 @@ class DataWrangl():
         assert col_complete in df_redcap.columns
 
         # Check if summed columns do not have missing data
+        ridx_missingitems = []
         for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
-            row_has_missing_data = False
-
             for col in col_items:
                 if (eval(f'row.{col}') is None) or (math.isnan(eval(f'row.{col}'))):
-                    row_has_missing_data = True
+                    ridx_missingitems.append(row.Index)
 
-            if row_has_missing_data:
-                print(f"'add_sum_scores' sums incomplete columns at row index: {row.Index}")
+        if ridx_missingitems!=[]:
+            ridx_missingitems = [ridx for ridx in set(ridx_missingitems)]
+            print(f"\nMissing items from sum score calculation at row index (will skip rows from sum scores): {ridx_missingitems} \
+                \n\tFirst summed column: {col_items[0]}")
 
         # Sum scores
         df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
+        df_redcap.loc[ridx_missingitems, col_score] = math.nan
 
         # Normalize sum scores if needed
         if 'normalize' in kwargs:
@@ -110,7 +116,7 @@ class DataWrangl():
 
         return df_redcap
 
-    @staticmethod # done
+    @staticmethod
     def add_delta_scores(df_master, delta_from_tp='bsl', delta_from_time=0):
         ''' For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is NaN
             For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is not-NaN
@@ -236,7 +242,7 @@ class Analysis():
 class Plots():
     ''' Functions to help with figures '''
 
-    @staticmethod # done
+    @staticmethod
     def draw_translucent_boxplot(color, axis, alpha=0.35, add_stripplot=True, **kwargs):
         ''' Draws on axis a translucent boxplot with optional strip plot on top.
             Shortcut to achieve the look I like.
@@ -261,7 +267,7 @@ class Plots():
             r, g, b, a = patch.get_facecolor()
             patch.set_facecolor((r, g, b, alpha))
 
-    @staticmethod # done
+    @staticmethod
     def draw_corrmat(df_coeffs, df_pvalues, out_dir, fname_out, save=True, **kwargs):
         ''' Draws correlation matrix heatmap using outputs of get_corrmat()
 
@@ -310,7 +316,7 @@ class Plots():
                 save_PNG = True,
                 save_SVG = True,)
 
-    @staticmethod # done
+    @staticmethod
     def save_fig(fig, out_dir, fname_out, save_PNG, save_SVG,):
         ''' Saves and then closes figure
 
@@ -346,7 +352,7 @@ class Plots():
 class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
-    @staticmethod # done
+    @staticmethod
     def check_masterDf(df_master, measure_types=['bsl', 'change', 'in_dose', 'post_dose']):
         ''' Check if longform master df_master for all assumptions '''
 
@@ -358,7 +364,7 @@ class CheckDf():
         CheckDf.check_score_delta_score(df_master)
         CheckDf.check_measure_types(df_master, measure_types)
 
-    @staticmethod # done
+    @staticmethod
     def check_duplicate_rows(df_master, cols=['pID', 'tp', 'measure', 'time']):
         ''' Check if there are duplicate rows '''
 
@@ -370,7 +376,7 @@ class CheckDf():
             print(f'There are {duplicate_rows.shape[0]} duplicate rows across {cols}.')
             print(duplicate_rows)
 
-    @staticmethod # done
+    @staticmethod
     def check_baseline_condition(df_master):
         ''' Check if there is a condition for every tp except baseline '''
 
@@ -379,7 +385,7 @@ class CheckDf():
         assert all([condition is None for condition in df_master.loc[(df_master.tp=='bsl')].condition])
         assert all([isinstance(condition, str) for condition in df_master.loc[(df_master.tp!='bsl')].condition])
 
-    @staticmethod # done
+    @staticmethod
     def check_indose_time(df_master):
         ''' Check if there is time for all in_dose measures and that there is
             no time for not in_dose measures
@@ -390,7 +396,7 @@ class CheckDf():
         assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
         assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
-    @staticmethod # done
+    @staticmethod
     def check_score_delta_score(df_master):
         ''' Check if there is time for all in_dose measures and that there is
             no time for not in_dose measures
@@ -406,10 +412,10 @@ class CheckDf():
 
         missing_baselines = df_master.loc[(df_master.measure_type=='change') & pd.isna(df_master.delta_score)]
         if missing_baselines.shape[0]!=0:
-            print("Missing some delta_scores for 'change' instruments (baseline missing?):")
+            print("\nMissing delta_scores for following 'change' instruments (baseline missing?):")
             print(missing_baselines)
 
-    @staticmethod # done
+    @staticmethod
     def check_measure_types(df_master, measure_types):
         ''' Check if all measure_type is one of the defined values
         '''
@@ -422,7 +428,7 @@ class Helpers():
     ''' Various helper functions '''
 
     @staticmethod
-    def sig_marking(value): # done
+    def sig_marking(value):
         ''' Converts p-values to standard significance marks '''
 
         assert isinstance(value, float)
@@ -436,7 +442,7 @@ class Helpers():
         else:
             return ''
 
-    @staticmethod # done
+    @staticmethod
     def has_time(df, measure):
         ''' Detects whether the given measure has time, i.e. is it measured at
             multiple timepoints during the tp or not.
@@ -525,3 +531,9 @@ class UndecidedHasTime(Exception):
     def __init__(self, measure):
         self.measure = measure
         super().__init__(self.measure)
+
+class MissingItemsFromSumScore(Exception):
+    def __init__(self, msg, df_exception):
+        self.msg = msg
+        self.df_exception = df_exception
+        super().__init__(self.msg, self.df_exception)

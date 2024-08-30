@@ -272,8 +272,7 @@ class DataWranglTests(unittest.TestCase):
 
     def test_add_sum_scores_case3(self):
         ''' Missing data case. Should also produce print (use "python -m pytest -s .\tests\" to see in terminal):
-                'add_sum_scores' sums incomplete columns at row index: 0
-                'add_sum_scores' sums incomplete columns at row index: 1
+                "Missing items from sum score calculation at row index (will skip rows from sum scores): [0, 1]"
         '''
 
         df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv'))
