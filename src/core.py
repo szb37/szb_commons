@@ -268,13 +268,13 @@ class Plots():
             patch.set_facecolor((r, g, b, alpha))
 
     @staticmethod
-    def draw_corrmat(df_coeffs, df_pvalues, out_dir, fname_out, save=True, **kwargs):
+    def draw_corrmat(df_coeffs, df_pvalues, dir_out, fname_out, save=True, **kwargs):
         ''' Draws correlation matrix heatmap using outputs of get_corrmat()
 
             Args:
                 df_coeffs (pd.DataFrame): dataframe of correlation coefficients
                 df_pvalues (pd.DataFrame): dataframe of correlation p-values
-                out_dir (str): where to save fig
+                dir_out (str): where to save fig
                 fname_out (str): name of file saves
                 save (bool): should image be save
         '''
@@ -282,7 +282,7 @@ class Plots():
         assert isinstance(df_coeffs, pd.DataFrame)
         assert isinstance(df_pvalues, pd.DataFrame)
         assert isinstance(save, bool)
-        assert isinstance(out_dir, str)
+        assert isinstance(dir_out, str)
         assert isinstance(fname_out, str)
 
         fig, ax = plt.subplots(dpi=300)
@@ -311,37 +311,37 @@ class Plots():
         if save:
             save_fig(
                 fig = fig,
-                out_dir  = out_dir,
+                dir_out  = dir_out,
                 filename = fname_out,
                 save_PNG = True,
                 save_SVG = True,)
 
     @staticmethod
-    def save_fig(fig, out_dir, fname_out, save_PNG, save_SVG,):
+    def save_fig(fig, dir_out, fname_out, save_PNG, save_SVG,):
         ''' Saves and then closes figure
 
             Args:
                 - save_PNG (bool): save fig as PNG?
                 - save_SVG (bool): save fig as SVG?
-                - out_dir (str): where to save fig
+                - dir_out (str): where to save fig
                 - fname_out (str): name of file saves
         '''
 
         assert isinstance(save_PNG, bool)
         assert isinstance(save_SVG, bool)
-        assert isinstance(out_dir, str)
+        assert isinstance(dir_out, str)
         assert isinstance(fname_out, str)
 
         if save_PNG:
             fig.savefig(
-                fname=os.path.join(out_dir, f'{fname_out}.png'),
+                fname=os.path.join(dir_out, f'{fname_out}.png'),
                 bbox_inches='tight',
                 format='png',
                 dpi=300,)
 
         if save_SVG:
             fig.savefig(
-                fname=os.path.join(out_dir, f'{fname_out}.svg'),
+                fname=os.path.join(dir_out, f'{fname_out}.svg'),
                 bbox_inches='tight',
                 format='svg',
                 dpi=300,)
@@ -483,7 +483,7 @@ class Helpers():
         return has_time
 
     @staticmethod
-    def get_corrmat(df, method, vars1, vars2, out_dir, fname_out, save=True):
+    def get_corrmat(df, method, vars1, vars2, dir_out, fname_out, save=True):
         """ Calculates and visalizes the correlation between all predictors and timepoints
             Args:
                 df (pd.DataFrame): wide-format dataframe where all elements of vars1 and vars2 are columns
@@ -491,7 +491,7 @@ class Helpers():
                 vars2 (list of strs): outcome variables; y-axis of corr matrix
                 method (str): correlation method; must be one of 'pearson'/'spearman'/'kendall'
                 save(boolean): save results?
-                out_dir(str): string to folder where results saved
+                dir_out(str): string to folder where results saved
                 out_fanem(str): filename prefix
 
             Returns:
