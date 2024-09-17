@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from statistics import mean, stdev
+import src.config as commons_config
 from scipy import stats
 import seaborn as sns
 import pandas as pd
@@ -238,6 +239,62 @@ class Analysis():
 
         return df_observed
 
+    @staticmethod
+    def get_corrmats(df, vars1, vars2, dir_out, prefix_out, do_draw=True, save=False, **kwargs):
+        """ Calculates and corr coeffs and associated p-values between all pairs of vars1 and vars2
+            Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
+
+            Args:
+                df (pd.DataFrame): wide-format dataframe where all elements of vars1 and vars2 are columns
+                vars1 (list of strs): predictor variables; x-axis of corr matrix
+                vars2 (list of strs): outcome variables; y-axis of corr matrix
+                save(boolean): save results?
+                dir_out(str): string to folder where results saved
+                prefix_out(str): filename prefix of the outputs
+
+            Returns:
+                df_coeffs (pd.DataFrame): dataframe of correlation coefficients
+                df_pvalues (pd.DataFrame): dataframe of correlation p-values
+        """
+
+        assert isinstance(df, pd.DataFrame)
+        for idx in [1,2]:
+            assert isinstance(eval(f'vars{idx}'), list)
+            assert sum([isinstance(var, str) for var in eval(f'vars{idx}')])
+            assert sum([var in df.columns for var in eval(f'vars{idx}')])
+
+        df_coeffs = pd.DataFrame(columns=vars1, index=vars2)
+        df_pvalues = pd.DataFrame(columns=vars1, index=vars2)
+
+        for var1, var2 in itertools.product(vars1, vars2):
+            for method in ['pearson', 'spearman', 'kendall']:
+
+                df_tmp = df[[var1, var2]]
+                df_tmp = df_tmp.dropna()
+
+                if method == 'pearson':
+                     result_corr = stats.pearsonr(df_tmp[var1], df_tmp[var2])
+                elif method == 'spearman':
+                     result_corr = stats.spearmanr(df_tmp[var1], df_tmp[var2])
+                elif method == 'kendall':
+                     result_corr = stats.kendalltau(df_tmp[var1], df_tmp[var2])
+
+                df_coeffs.at[var2, var1] = round(result_corr.statistic, 3)
+                df_pvalues.at[var2, var1] = round(result_corr.pvalue, 3)
+
+                if save:
+                    df_coeffs.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_coeffs.csv'), index=False)
+                    df_pvalues.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_pvalues.csv'), index=False)
+
+                if do_draw:
+                    Plots.draw_corrmat(
+                        df_coeffs = df_coeffs,
+                        df_pvalues = df_pvalues,
+                        dir_out = dir_out,
+                        fname_out = f'{prefix_out}_{method}_plot',
+                        save = save,
+                        title = kwargs['title']+f' {method.upper()}')
+
 
 class Plots():
     ''' Functions to help with figures '''
@@ -300,21 +357,21 @@ class Plots():
         plt.xticks(rotation=45)
 
         if 'title' in kwargs:
-            ax.set_title(kwargs['title'], fontdict=kwargs['title_fontdict'])
+            ax.set_title(kwargs['title'], fontdict=commons_config.title_fontdict)
 
         if 'xlabel' in kwargs:
-            ax.set_xlabel(kwargs['xlabel'], fontdict=kwargs['axislabel_fontdict'])
+            ax.set_xlabel(kwargs['xlabel'], fontdict=commons_config.axislabel_fontdict)
 
         if 'ylabel' in kwargs:
-            ax.set_ylabel(kwargs['ylabel'], fontdict=kwargs['axislabel_fontdict'])
+            ax.set_ylabel(kwargs['ylabel'], fontdict=commons_config.axislabel_fontdict)
 
         if save:
-            save_fig(
+            Plots.save_fig(
                 fig = fig,
                 dir_out  = dir_out,
-                filename = fname_out,
-                save_PNG = True,
-                save_SVG = True,)
+                fname_out = fname_out,
+                save_PNG = commons_config.save_PNG,
+                save_SVG = commons_config.save_SVG,)
 
     @staticmethod
     def save_fig(fig, dir_out, fname_out, save_PNG, save_SVG,):
@@ -481,50 +538,6 @@ class Helpers():
 
         assert isinstance(has_time, bool)
         return has_time
-
-    @staticmethod
-    def get_corrmat(df, method, vars1, vars2, dir_out, fname_out, save=True):
-        """ Calculates and visalizes the correlation between all predictors and timepoints
-            Args:
-                df (pd.DataFrame): wide-format dataframe where all elements of vars1 and vars2 are columns
-                vars1 (list of strs): predictor variables; x-axis of corr matrix
-                vars2 (list of strs): outcome variables; y-axis of corr matrix
-                method (str): correlation method; must be one of 'pearson'/'spearman'/'kendall'
-                save(boolean): save results?
-                dir_out(str): string to folder where results saved
-                out_fanem(str): filename prefix
-
-            Returns:
-                df_coeffs (pd.DataFrame): dataframe of correlation coefficients
-                df_pvalues (pd.DataFrame): dataframe of correlation p-values
-        """
-
-        assert isinstance(df, pd.DataFrame)
-        assert method in ['pearson', 'spearman', 'kendall']
-        for idx in [1,2]:
-            assert isinstance(eval(f'vars{idx}'), list)
-            assert sum([isinstance(var, str) for var in eval(f'vars{idx}')])
-            assert sum([var in df.columns for var in eval(f'vars{idx}')])
-
-        df_coeffs = pd.DataFrame(columns=vars1, index=vars2)
-        df_pvalues = pd.DataFrame(columns=vars1, index=vars2)
-
-        for var1, var2 in itertools.product(vars1, vars2):
-
-            df_tmp = df[[var1, var2]]
-            df_tmp = df_tmp.dropna()
-
-            if method == 'pearson':
-                 result_corr = stats.pearsonr(df_tmp[var1], df_tmp[var2])
-            elif method == 'spearman':
-                 result_corr = stats.spearmanr(df_tmp[var1], df_tmp[var2])
-            elif method == 'kendall':
-                 result_corr =stats.kendalltau(df_tmp[var1], df_tmp[var2])
-
-            df_coeffs.at[var2, var1] = round(result_corr.statistic, 3)
-            df_pvalues.at[var2, var1] = round(result_corr.pvalue, 3)
-
-        return df_coeffs, df_pvalues
 
 
 class UndecidedHasTime(Exception):
