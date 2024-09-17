@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 plt.rcParams.update({'font.family': 'arial'})
 plt.rcParams['svg.fonttype'] = 'none'  # Ensure fonts are embedded
 plt.rcParams['text.usetex'] = False  # Use TeX to handle text (embeds fonts)
