@@ -266,8 +266,8 @@ class Analysis():
         df_coeffs = pd.DataFrame(columns=vars1, index=vars2)
         df_pvalues = pd.DataFrame(columns=vars1, index=vars2)
 
-        for var1, var2 in itertools.product(vars1, vars2):
-            for method in ['pearson', 'spearman', 'kendall']:
+        for method in ['pearson', 'spearman', 'kendall']:
+            for var1, var2 in itertools.product(vars1, vars2):
 
                 df_tmp = df[[var1, var2]]
                 df_tmp = df_tmp.dropna()
@@ -282,18 +282,18 @@ class Analysis():
                 df_coeffs.at[var2, var1] = round(result_corr.statistic, 3)
                 df_pvalues.at[var2, var1] = round(result_corr.pvalue, 3)
 
-                if save:
-                    df_coeffs.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_coeffs.csv'), index=False)
-                    df_pvalues.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_pvalues.csv'), index=False)
+            if save:
+                df_coeffs.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_coeffs.csv'), index=False)
+                df_pvalues.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_pvalues.csv'), index=False)
 
-                if do_draw:
-                    Plots.draw_corrmat(
-                        df_coeffs = df_coeffs,
-                        df_pvalues = df_pvalues,
-                        dir_out = dir_out,
-                        fname_out = f'{prefix_out}_{method}_plot',
-                        save = save,
-                        title = kwargs['title']+f' {method.upper()}')
+            if do_draw:
+                Plots.draw_corrmat(
+                    df_coeffs = df_coeffs,
+                    df_pvalues = df_pvalues,
+                    dir_out = dir_out,
+                    fname_out = f'{prefix_out}_{method}_plot',
+                    save = save,
+                    title = kwargs['title']+f' {method.upper()}')
 
 
 class Plots():
