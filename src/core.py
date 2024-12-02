@@ -390,6 +390,8 @@ class Plots():
         assert isinstance(fname_out, str)
 
         if save_PNG:
+            if not os.path.exists(dir_out):
+                os.mkdir(dir_out)
             fig.savefig(
                 fname=os.path.join(dir_out, f'{fname_out}.png'),
                 bbox_inches='tight',
@@ -397,6 +399,8 @@ class Plots():
                 dpi=300,)
 
         if save_SVG:
+            if not os.path.exists(dir_out):
+                os.mkdir(dir_out)
             fig.savefig(
                 fname=os.path.join(dir_out, f'{fname_out}.svg'),
                 bbox_inches='tight',
@@ -408,6 +412,8 @@ class Plots():
 
 class CheckDf():
     ''' Check assumptions about longform master DFs '''
+
+    # NOTE: I think you should define what each of these measure types are supposed to mean here (or somewhere earlier). I haven't come across the definitions in either repo yet.
 
     @staticmethod
     def check_masterDf(df_master, measure_types=['bsl', 'change', 'in_dose', 'post_dose']):
@@ -453,6 +459,8 @@ class CheckDf():
         assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
         assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
+    # FIXME: docstring for check_score_delta_score needs updating (it is the same as check_indose_time)
+    
     @staticmethod
     def check_score_delta_score(df_master):
         ''' Check if there is time for all in_dose measures and that there is
