@@ -18,7 +18,7 @@ class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
     @staticmethod
-    def get_longdf_of_measure(df_redcap, measure, cols_to_keep=['pID', 'tp']):
+    def get_df_measure(df_redcap, measure, cols_to_keep=['pID', 'tp']):
         ''' Extracts the scores associated with 'measure' from the raw REDCap df,
             where 'measure' is a dictionary defining what columns are taken from
             REDCap df and how the output is formatted.
@@ -65,6 +65,125 @@ class DataWrangl():
         df_measure['measure_type'] = measure['measure_type']
 
         return df_measure
+
+    @staticmethod
+    def get_df_vitals(df_redcap):
+        """ Create long-form dataframe of vitals data
+            Args:
+                - df_redcap (pd.DataFrame): raw REDCAP export df
+
+            Returns:
+                - df_vitals (pd.DataFrame): long-form dataframe of vitals data
+        """
+
+        # Change name of baseline columns to fit naming convention of other columns
+        df_redcap = df_redcap.rename(
+            columns={
+                'vs_bl_dia': 'vs_dose0_dia1',
+                'vs_bl_sys': 'vs_dose0_sys1',
+                'vs_bl_hr': 'vs_dose0_hr1',}, inplace=False)
+
+        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_dia1')+1, column='vs_dose0_dia2', value=math.nan)
+        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_sys1')+1, column='vs_dose0_sys2', value=math.nan)
+        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_hr1')+1, column='vs_dose0_hr2', value=math.nan)
+
+        df_redcap.loc[:, 'vs_dose0_dia1'] = pd.to_numeric(df_redcap['vs_dose0_dia1'])
+        df_redcap.loc[:, 'vs_dose0_sys1'] = pd.to_numeric(df_redcap['vs_dose0_sys1'])
+        df_redcap.loc[:, 'vs_dose0_hr1'] = pd.to_numeric(df_redcap['vs_dose0_hr1'])
+
+        measures = ['hr', 'dia', 'sys']
+        times = ['0', '30', '60', '90', '120', '240', '360']
+        readings = ['1', '2']
+        cols_vitals = [f'vs_dose{time}_{measure}{reading}' for time, measure, reading in itertools.product(times, measures, readings)]
+
+        df_redcap = df_redcap.loc[(df_redcap.vitals_record_complete==2)]
+        df_redcap = df_redcap[['pID', 'tp']+cols_vitals]
+        rows_vitals = []
+
+        for row_df_redcap in df_redcap.itertuples():
+            pID = row_df_redcap.pID
+            tp = row_df_redcap.tp
+
+            for measure, time in itertools.product(measures, times):
+
+                score1 = eval(f'row_df_redcap.vs_dose{time}_{measure}1')
+                score2 = eval(f'row_df_redcap.vs_dose{time}_{measure}2')
+
+                if (not math.isnan(score1)) and (math.isnan(score2)):
+                    score = eval(f'row_df_redcap.vs_dose{time}_{measure}1')
+                elif (not math.isnan(score1)) and (not math.isnan(score2)):
+                    score = round((score1+score2)/2, 2)
+                else:
+                    assert False # at least there should be one NaN measure
+
+                rows_vitals.append([
+                    pID,
+                    tp,
+                    score,
+                    'VITALS',
+                    f'VITALS_{measure}',
+                    'in_dose',
+                    time])
+
+        df_vitals = pd.DataFrame(columns=[
+            'pID',
+            'tp',
+            'score',
+            'instrument',
+            'measure',
+            'measure_type',
+            'time'], data=rows_vitals)
+        return df_vitals
+
+    @staticmethod
+    def get_df_intensity(df_redcap):
+        """ Create long-form dataframe of vitals data
+            Args:
+                - df_redcap (pd.DataFrame): raw REDCAP export df
+
+            Returns:
+                - df_vitals (pd.DataFrame): long-form dataframe of vitals data
+        """
+
+        parties = ['pat', 'fac']
+        times = ['30', '60', '90', '120', '180', '240','300']
+        cols_ints = [f'ir_{party}intensity{time}' for party, time in itertools.product(parties, times)]
+
+        df_redcap = df_redcap.loc[(df_redcap.intensity_rating_complete==2)]
+        df_redcap = df_redcap[['pID', 'tp']+cols_ints]
+        rows_ints = []
+
+        for row_df_redcap in df_redcap.itertuples():
+            pID = row_df_redcap.pID
+            tp = row_df_redcap.tp
+
+            for party, time in itertools.product(parties, times):
+
+                score = eval(f'row_df_redcap.ir_{party}intensity{time}')
+
+                if math.isnan(score):
+                    continue
+
+                rows_ints.append([
+                    pID,
+                    tp,
+                    score,
+                    'INTENSITY',
+                    f'INTENSITY_{party}',
+                    'in_dose',
+                    time])
+
+        df_ints = pd.DataFrame(
+            columns=[
+                'pID',
+                'tp',
+                'score',
+                'instrument',
+                'measure',
+                'measure_type',
+                'time'],
+            data=rows_ints)
+        return df_ints
 
     @staticmethod
     def add_sum_scores(df_redcap, col_complete, col_items, col_score, **kwargs):
@@ -374,7 +493,77 @@ class Plots():
                 save_SVG = commons_config.save_SVG,)
 
     @staticmethod
-    def save_fig(fig, dir_out, fname_out, save_PNG, save_SVG,):
+    def draw_vitals(df_master, dir_out, prefix_out, save=True, measures=['dia', 'sys', 'hr'], **kwargs):
+        """ Draw in-dosing-session trajectory of vitals
+            Args:
+                df_master (pd.DataFrame): long-form master df
+                measures (list): list of vitals;
+                dir_out (str): where to save results
+                save (bool): save figure?
+        """
+
+        assert isinstance(df_master, pd.DataFrame)
+        assert isinstance(dir_out, str)
+        assert isinstance(prefix_out, str)
+        assert isinstance(save, bool)
+
+        for measure in measures:
+
+            fig = plt.figure()
+            ax = fig.add_subplot(1, 1, 1)
+            df_master_measure = df_master.loc[(df_master.measure==f'VITALS_{measure}')]
+
+            ax = sns.lineplot(
+                data = df_master_measure,
+                x = 'time',
+                y = 'score',
+                #hue = 'tp',
+                hue = 'condition',
+                markersize = 10,
+                legend = True,
+                #style = 'tp',
+                linewidth=2,
+                markers = [
+                    "o", "D"],
+                palette = {
+                    #'A0': '#56A0FB',
+                    #'B0': '#F71480'},
+                    'C': '#56A0FB',
+                    'T': '#F71480'},
+                errorbar = "ci",
+                err_style = "bars",
+                err_kws={
+                    'capsize': 4,
+                    'elinewidth': 0.75,
+                    'capthick': 0.75},)
+
+            ax.set_xlabel('Time [min]', fontdict=commons_config.axislabel_fontdict)
+            ax.set_xticks([0, 30, 60, 90, 120, 240, 360, 420])
+
+            if measure=='hr':
+                ax.set_ylabel('Heart rate [BPM]', fontdict=commons_config.axislabel_fontdict)
+            elif measure=='dia':
+                ax.set_ylabel('Diastolic BP [mmHg]', fontdict=commons_config.axislabel_fontdict)
+            elif measure=='sys':
+                ax.set_ylabel('Systolic BP [mmHg]', fontdict=commons_config.axislabel_fontdict)
+            else:
+                assert False
+
+            ax.tick_params(axis='both', which='major', labelsize=commons_config.ticklabel_fontsize)
+            sns.despine(top=True, right=True, left=False, bottom=False)
+            ax.yaxis.grid(False)
+            ax.xaxis.grid(False)
+
+            if save:
+                Plots.save_fig(
+                    fig = fig,
+                    dir_out = dir_out,
+                    fname_out = f'{prefix_out}_{measure}',
+                    save_PNG=commons_config.savePNG,
+                    save_SVG=commons_config.saveSVG)
+
+    @staticmethod
+    def save_fig(fig, dir_out, fname_out, save_PNG, save_SVG):
         ''' Saves and then closes figure
 
             Args:
@@ -410,7 +599,7 @@ class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
     @staticmethod
-    def check_masterDf(df_master, measure_types=['bsl', 'change', 'in_dose', 'post_dose']):
+    def check_masterDf(df_master, measure_types=['bsl', 'change', 'in_dose', 'post_dose', 'post_trt']):
         ''' Check if longform master df_master for all assumptions '''
 
         assert isinstance(df_master, pd.DataFrame)
@@ -438,8 +627,7 @@ class CheckDf():
         ''' Check if there is a condition for every tp except baseline '''
 
         assert isinstance(df_master, pd.DataFrame)
-
-        assert all([condition is None for condition in df_master.loc[(df_master.tp=='bsl')].condition])
+        assert all([condition in [None, ''] for condition in df_master.loc[(df_master.tp=='bsl')].condition])
         assert all([isinstance(condition, str) for condition in df_master.loc[(df_master.tp!='bsl')].condition])
 
     @staticmethod

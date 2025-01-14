@@ -28,7 +28,7 @@ class DataWranglTests(unittest.TestCase):
         ''' Case of missing scores '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_of_measure(
+        df = core.DataWrangl.get_longdf_measures(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v0.csv')),
             measure = {
                 'instrument': 'EBI',
@@ -51,7 +51,7 @@ class DataWranglTests(unittest.TestCase):
         ''' Intended use case '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_of_measure(
+        df = core.DataWrangl.get_longdf_measures(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             measure = {
                 'instrument': 'EBI',
@@ -73,7 +73,7 @@ class DataWranglTests(unittest.TestCase):
         ''' Check if col_complete=None works as intended '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_of_measure(
+        df = core.DataWrangl.get_longdf_measures(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             measure = {
                 'instrument': 'EBI',
@@ -100,7 +100,7 @@ class DataWranglTests(unittest.TestCase):
         df_redcap1.iloc[1, 8] = None
 
         # Calculate
-        df = core.DataWrangl.get_longdf_of_measure(
+        df = core.DataWrangl.get_longdf_measures(
             df_redcap = df_redcap1,
             measure = {
                 'instrument': 'EBI',
@@ -122,7 +122,7 @@ class DataWranglTests(unittest.TestCase):
         ''' Check whether extending cols_to_keep works '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_of_measure(
+        df = core.DataWrangl.get_longdf_measures(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             cols_to_keep = ['pID', 'tp', 'ebi_1', 'ebi_2'],
             measure = {
@@ -144,7 +144,7 @@ class DataWranglTests(unittest.TestCase):
         ### Case where cols_to_keep is empty
 
         # Calculate
-        df = core.DataWrangl.get_longdf_of_measure(
+        df = core.DataWrangl.get_longdf_measures(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             cols_to_keep = [],
             measure = {
