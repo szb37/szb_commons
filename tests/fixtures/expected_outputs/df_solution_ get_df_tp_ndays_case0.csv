@@ -1,0 +1,14 @@
+tp,ndays,n
+screen,-70,11.0
+bsl,0,
+prep1_arm_1,4,13.0
+prep2_arm_1,11,13.0
+prep3_arm_1,12,5.0
+A0,15,12.0
+INT1,18,12.0
+ASS1,22,12.0
+INT2,23,12.0
+INT3,33,12.0
+repeat_dosing_arm_1,34,1.0
+A30,45,11.0
+A90,101,9.0

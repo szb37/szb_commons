@@ -1,0 +1,13 @@
+pID,tp,measure_type,instrument,measure,time,score
+POP1008,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30.0,2.0
+POP1010,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,0
+POP1011,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,1
+POP1020,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,3
+POP1021,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,0
+POP1023,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,1
+POP1024,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,1
+POP1033,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,0
+POP1051,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,2
+POP1062,repeat_dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,1
+POP1102,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,1
+POP1110,dosing_arm_1,in_dose,INTENSITY,INTENSITY_pat,30,2

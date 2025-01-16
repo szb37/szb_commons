@@ -1,7 +1,8 @@
-import matplotlib.pyplot as plt
+import src.config as config
+import commons_codebase.src.config as commons_config
 from statistics import mean, stdev
-import src.config as commons_config
 from scipy import stats
+import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -12,23 +13,22 @@ import os
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
-    @staticmethod
-    def get_df_measure(df_redcap, measure, cols_to_keep=['pID', 'tp']):
-        ''' Extracts the scores associated with 'measure' from the raw REDCap df,
-            where 'measure' is a dictionary defining what columns are taken from
-            REDCap df and how the output is formatted.
+    @staticmethod # DONE
+    def get_df_measure(df_redcap:pd.DataFrame, measure_param:dict, cols_to_keep:list[str]=commons_config.cols_to_keep, **save)-> pd.DataFrame:
+        ''' Returns all completed scores of a given measure in long-formatted df.
+            This fucntion is intended to be used for measures without time, see get_df_indose for measures w time
+            TODO: merge get_df_measure and get_df_indose
 
             Args:
-                - df_redcap (pd.DataFrame): raw export from REDCap
-                - cols_to_keep (list of strs): what columns should be kept in longform DF
-                - measure (dict): dictionary that defines what columns are taken from df_redcap
-                    and how the output is formatted. It is assumed that the dictionary
-                    has the following keys (can have other keys as well):
+                - df_redcap: raw export from REDCap
+                - cols_to_keep: what columns from the REDCAP df should be kept in returned df
+                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
                         - 'instrument': value of the "instrument" column in the returned df;
                         - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
                         - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
@@ -36,39 +36,54 @@ class DataWrangl():
                         - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
 
             Returns:
-                - df_measure (pd.DataFrame): longform df with all scores of the defined measure
+                - df (pd.DataFrame): longform df with all scores of the defined measure
         '''
 
         assert isinstance(df_redcap, pd.DataFrame)
-        assert isinstance(measure, dict)
-        assert all([field in measure.keys() for field in
-            ['instrument', 'measure', 'measure_type', 'col_complete', 'col_score']])
+        assert isinstance(measure_param, dict)
+        assert all([field in measure_param.keys() for field in
+            ['instrument', 'measure', 'measure_type', 'col_complete', 'col_score',]])
         assert isinstance(cols_to_keep, list)
 
         # define variables
-        df_measure = df_redcap.copy()
-        col_score = measure['col_score']
-        col_complete = measure['col_complete']
-        cols_to_keep = cols_to_keep + [col_score]
+        df = df_redcap.copy()
+        col_score = measure_param['col_score']
+        col_complete = measure_param['col_complete']
 
         # reduce dataframe
         if col_complete is not None:
-            df_measure = df_measure.loc[(df_measure[col_complete]==2)]
-        df_measure = df_measure[cols_to_keep]
-        df_measure = df_measure.dropna(subset=[col_score])
+            df = df.loc[(df[col_complete]==2)]
+        df = df[cols_to_keep + [col_score]]
+        df = df.dropna(subset=(['pID', 'tp']+[col_score]))
 
         # rename / add bookkeeping columns
-        df_measure.rename(columns={col_score: 'score'}, inplace=True)
-        df_measure['score'] = df_measure['score'].astype('float64')
-        df_measure['instrument'] = measure['instrument']
-        df_measure['measure'] = measure['measure']
-        df_measure['measure_type'] = measure['measure_type']
+        df.rename(columns={col_score: 'score'}, inplace=True)
+        df['score'] = df['score'].astype('float64')
+        df['instrument'] = measure_param['instrument']
+        df['measure'] = measure_param['measure']
+        df['measure_type'] = measure_param['measure_type']
 
-        return df_measure
+        ### Cleanup, save, return output
+        if 'time' in measure_param.keys():
+            df['time'] = measure_param['time']
+            df['time'] = df['time'].astype('float64')
+            df = df[cols_to_keep+['measure_type','instrument','measure','time','score']]
+        else:
+            df = df[cols_to_keep+['measure_type','instrument','measure','score']]
 
-    @staticmethod
-    def get_df_vitals(df_redcap):
-        """ Create long-form dataframe of vitals data
+        df['score'] = df['score'].astype('float64')
+        df.reset_index(inplace=True, drop=True)
+
+        if save!={}:
+            df.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df
+
+    @staticmethod # should be decapirated
+    def get_df_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
+        """ Special case of the get_df_indose function to deal with the idionsyhrocies of vitals measures.
+            Speifically baseline measure has different naming convention than post-baseline measures
+
             Args:
                 - df_redcap (pd.DataFrame): raw REDCAP export df
 
@@ -135,58 +150,67 @@ class DataWrangl():
             'time'], data=rows_vitals)
         return df_vitals
 
-    @staticmethod
-    def get_df_intensity(df_redcap):
-        """ Create long-form dataframe of vitals data
+    @staticmethod # DONE
+    def get_df_tp_ndays(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
+        """ Calculates the average number of days for each timepoint since baseline.
+            This data is usefull when determining spacing between timepoints on various graphs
+
             Args:
-                - df_redcap (pd.DataFrame): raw REDCAP export df
+                - df_redcap: raw REDCAP export df
+                - save: info for saving
 
             Returns:
-                - df_vitals (pd.DataFrame): long-form dataframe of vitals data
+                - df_tp_ndays: dataframe of timepoints and the avg days since baseline
         """
 
-        parties = ['pat', 'fac']
-        times = ['30', '60', '90', '120', '180', '240','300']
-        cols_ints = [f'ir_{party}intensity{time}' for party, time in itertools.product(parties, times)]
+        ### Clean REDCap df
+        df = df_redcap.rename(columns={'vrecord_date': 'date',})
+        df = df.loc[(df.study_visit_completion_record_complete==2)]
+        df = df[['pID', 'tp', 'date']]
+        df = df.dropna()
+        df.date = pd.to_datetime(df.date)
+        df.reset_index(drop=True, inplace=True)
+        cidx_date = df.columns.get_loc('date')
 
-        df_redcap = df_redcap.loc[(df_redcap.intensity_rating_complete==2)]
-        df_redcap = df_redcap[['pID', 'tp']+cols_ints]
-        rows_ints = []
+        ### Prep outpur
+        df_tp_ndays_rows = []
+        df_tp_ndays_rows.append(['bsl', 0, math.nan])
 
-        for row_df_redcap in df_redcap.itertuples():
-            pID = row_df_redcap.pID
-            tp = row_df_redcap.tp
+        ### Iterate through all patients / tps
+        for tp in df.tp.unique():
 
-            for party, time in itertools.product(parties, times):
+            if tp=='bsl':
+                continue
+            ndays=[]
 
-                score = eval(f'row_df_redcap.ir_{party}intensity{time}')
+            for pID in df.pID.unique():
+                row_bsl = df.loc[(df.pID==pID) & (df.tp=='bsl')]
+                row_tp = df.loc[(df.pID==pID) & (df.tp==tp)]
 
-                if math.isnan(score):
-                    continue
+                # calculate tp-bsl in days
+                # ignore if there is not exactly 1 row for either tp or bsl
+                if (row_bsl.shape[0]==1) & (row_tp.shape[0]==1):
+                    ndays.append(
+                        (df.iloc[row_tp.index[0], cidx_date] - df.iloc[row_bsl.index[0], cidx_date]).days)
 
-                rows_ints.append([
-                    pID,
-                    tp,
-                    score,
-                    'INTENSITY',
-                    f'INTENSITY_{party}',
-                    'in_dose',
-                    time])
+            ### Create row with avg number of days between baseline and tp
+            df_tp_ndays_rows.append([
+                tp,
+                round(np.array(ndays).mean()),
+                len(ndays)])
 
-        df_ints = pd.DataFrame(
-            columns=[
-                'pID',
-                'tp',
-                'score',
-                'instrument',
-                'measure',
-                'measure_type',
-                'time'],
-            data=rows_ints)
-        return df_ints
+        ### Convert list of rows to df
+        df_tp_ndays = pd.DataFrame(columns=['tp', 'ndays', 'n'], data=df_tp_ndays_rows)
+        df_tp_ndays.sort_values(by='ndays', inplace=True)
 
-    @staticmethod
-    def add_sum_scores(df_redcap, col_complete, col_items, col_score, **kwargs):
+        ### Save if needed, return output
+        if save!={}:
+            df_tp_ndays.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df_tp_ndays
+
+    @staticmethod # DONE
+    def add_sum_scores(df_redcap:pd.DataFrame, col_complete:str, col_items:list[str], col_score:str, **kwargs) -> pd.DataFrame:
         ''' Calculates the sum of scores for columns in 'col_items' and adds the
             sum score to 'col_score' row of the input dataframe.
             Designed to work with wide format REDCap dfs.
@@ -201,12 +225,6 @@ class DataWrangl():
             Returns:
                 - df_redcap (pd.DataFrame): REDCap df with col_score added
         '''
-
-        assert isinstance(df_redcap, pd.DataFrame)
-        assert isinstance(col_items, list)
-        assert all([col_item in df_redcap.columns for col_item in col_items])
-        assert isinstance(col_score, str)
-        assert col_complete in df_redcap.columns
 
         # Check if summed columns do not have missing data
         ridx_missingitems = []
@@ -226,21 +244,21 @@ class DataWrangl():
 
         # Normalize sum scores if needed
         if 'normalize' in kwargs:
-
-            if kwargs['normalize']=='by_item_number':
+            if kwargs['normalize']=='by_nitems':
                 norm_factor = len(col_items)
-            elif kwargs['normalize']=='by_max_value':
-                norm_factor = len(col_items)*kwargs['max_value']
+            elif kwargs['normalize']=='by_maxscore':
+                norm_factor = len(col_items)*kwargs['max_item_score']
 
             df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_score] / norm_factor
 
         return df_redcap
 
-    @staticmethod
-    def add_delta_scores(df_master, delta_from_tp='bsl', delta_from_time=0):
-        ''' For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is NaN
-            For every pID, tp, measure triplet add delta_score from the delta_from tp if time column of the measure is not-NaN
-            NOT OPTIMIZED, will take a bit for larger dfs
+    @staticmethod # DONE
+    def add_delta_scores(df_master:pd.DataFrame, delta_from_tp:str='bsl', delta_from_time:int=0) -> pd.DataFrame:
+        ''' For every pID, tp, measure triplet add delta_score from timepoint defined by delta_from_tp if the row's measure has no time (i.e. all rows have time=nan)
+            For every pID, tp, measure triplet add delta_score from the time defined by delta_from_time at the given timepoint if the row's measure has time (i.e. all rows have a non-nan time)
+
+            WARNING: not optimized, may take a few mins with larger dfs
 
             Args:
                 - df (pd.DataFrame): longform df of trial data
@@ -299,67 +317,51 @@ class DataWrangl():
 
 class Analysis():
 
-    @staticmethod
-    def get_df_observed(df_master, fname_out='bap1_observed_scores.csv', save=False, digits=1, **kwargs):
-        """ Creates a dataframe with the observed mean±SD of all measures at every tp
+    @staticmethod # DONE
+    def get_df_observed(df_master:pd.DataFrame, digits:int=3, **save) -> pd.DataFrame:
+        """ Creates a dataframe with the observed mean and SD of all measures at every tp.
+            Missing data are ignored from the mean/sd calculations.
+
             Args:
-                - df_master (pd.DataFrame): long-form master dataframe containing all data
-                - fname_out(str): name of output CSV saved at folders.exports
-                - save (bool): save results?
-                - digits (int): round mean and SD to how many digits?
+                - df_master: long-form master dataframe containing all data
+                - digits: round mean and SD to how many digits?
+                - save: optional save information
 
             Returns:
-                - df_observed(pd.DataFrame): dataframe of observed mean±SD of all measures at every tp
+                - df_observed: df of observed means and SDs at every tp
         """
 
-        # get what measures and tps will be in df, initate df_observed
-        if 'measures' in kwargs:
-            measures = kwargs['measures']
-        else:
-            measures = df_master.measure.unique().tolist()
+        ### Initate output
+        measures = df_master.measure.unique().tolist()
+        tps = df_master.tp.unique().tolist()
+        rows_observed = []
 
-        if 'tps' in kwargs:
-            tps = kwargs['tps']
-        else:
-            tps = df_master.tp.unique().tolist()
+        ### Iterate through measures and tps, calculate means and SDs
+        for measure, tp in itertools.product(measures, tps):
 
-        df_observed = pd.DataFrame(columns=tps, index=measures)
-
-        # loop through measures and tps, calculate mean±SD for each cell
-        for measure, tp in itertools.product(measures, tps) :
-
-            scores = df_master.loc[(df_master.measure==measure) & (df_master.tp==tp)].score.tolist()
+            scores = df_master.loc[(df_master.measure==measure) & (df_master.tp==tp)].score.dropna().tolist()
             if len(scores)<3: # skip if not enough data to calc SD
                 continue
 
-            ridx = df_observed.index.get_loc(measure)
-            cidx = df_observed.columns.get_loc(tp)
+            rows_observed.append([
+                measure,
+                tp,
+                round(mean(scores), digits),
+                round(stdev(scores), digits),])
 
-            # calculate mean±SD for appropiate number of digits
-            if 'digits_measure' in kwargs:
-                if measure in kwargs['digits_measure'].keys():
-                    digits_tmp = kwargs['digits_measure'][measure] # set temporary number of digits
-                    value_cell = f'{round(mean(scores), digits_tmp)}±{round(stdev(scores), digits_tmp)}'
-                else:
-                    value_cell = f'{round(mean(scores), digits)}±{round(stdev(scores), digits)}'
-            else:
-                value_cell = f'{round(mean(scores), digits)}±{round(stdev(scores), digits)}'
+        ### Create DF from list of rows
+        df_observed = pd.DataFrame(
+            columns=['measure','tp','mean','sd'],
+            data=rows_observed)
 
-            df_observed.iloc[ridx, cidx] = value_cell
-
-        # sort columns and rows
-        df_observed = df_observed.sort_index()
-        tps.sort(key=lambda x: (x != 'bsl', x))
-        df_observed = df_observed[tps]
-
-        # save & return
-        if save:
-            df_observed.to_csv(os.path.join(kwargs['dir_out'], fname_out), index=True, encoding='latin1')
+        ### Save if needed, return output
+        if save!={}:
+            df_observed.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
 
         return df_observed
 
     @staticmethod
-    def get_corrmats(df, vars1, vars2, dir_out, prefix_out, do_draw=True, save=False, **kwargs):
+    def get_corrmats(df:pd.DataFrame, vars1:list[str], vars2:list[str], dir_out, prefix_out, do_draw:bool=True, save=False, **kwargs):
         """ Calculates and corr coeffs and associated p-values between all pairs of vars1 and vars2
             Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
 
@@ -412,7 +414,7 @@ class Analysis():
                     dir_out = dir_out,
                     fname_out = f'{prefix_out}_{method}_plot',
                     save = save,
-                    title = kwargs['title']+f' {method.upper()}')
+                    title = kwargs['title']+f'_{method.upper()}')
 
 
 class Plots():
@@ -602,13 +604,9 @@ class Plots():
 class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
-    # NOTE: I think you should define what each of these measure types are supposed to mean here (or somewhere earlier). I haven't come across the definitions in either repo yet.
-
     @staticmethod
-    def check_masterDf(df_master, measure_types=['bsl', 'change', 'in_dose', 'post_dose', 'post_trt']):
-        ''' Check if longform master df_master for all assumptions '''
-
-        assert isinstance(df_master, pd.DataFrame)
+    def check_masterDf(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:
+        ''' Check if df_master meets all assumptions '''
 
         CheckDf.check_duplicate_rows(df_master)
         CheckDf.check_baseline_condition(df_master)
@@ -617,10 +615,8 @@ class CheckDf():
         CheckDf.check_measure_types(df_master, measure_types)
 
     @staticmethod
-    def check_duplicate_rows(df_master, cols=['pID', 'tp', 'measure', 'time']):
+    def check_duplicate_rows(df_master:pd.DataFrame, cols=commons_config.cols_checkduplicates) -> None:
         ''' Check if there are duplicate rows '''
-
-        assert isinstance(df_master, pd.DataFrame)
 
         df_master = df_master[cols]
         duplicate_rows = df_master[df_master.duplicated(keep=False)]
@@ -629,7 +625,7 @@ class CheckDf():
             print(duplicate_rows)
 
     @staticmethod
-    def check_baseline_condition(df_master):
+    def check_baseline_condition(df_master:pd.DataFrame) -> None:
         ''' Check if there is a condition for every tp except baseline '''
 
         assert isinstance(df_master, pd.DataFrame)
@@ -637,20 +633,16 @@ class CheckDf():
         assert all([isinstance(condition, str) for condition in df_master.loc[(df_master.tp!='bsl')].condition])
 
     @staticmethod
-    def check_indose_time(df_master):
+    def check_indose_time(df_master:pd.DataFrame) -> None:
         ''' Check if there is time for all in_dose measures and that there is
             no time for not in_dose measures
         '''
 
-        assert isinstance(df_master, pd.DataFrame)
-
         assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
         assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
-    # FIXME: docstring for check_score_delta_score needs updating (it is the same as check_indose_time)
-    
-    @staticmethod
-    def check_score_delta_score(df_master):
+    @staticmethod # NEED new docstrings
+    def check_score_delta_score(df_master:pd.DataFrame) -> None:
         ''' Check if there is time for all in_dose measures and that there is
             no time for not in_dose measures
         '''
@@ -669,8 +661,13 @@ class CheckDf():
             print(missing_baselines)
 
     @staticmethod
-    def check_measure_types(df_master, measure_types):
-        ''' Check if all measure_type is one of the defined values
+    def check_measure_types(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:
+        ''' Check if all measure_type is one of the expected values:
+            -bsl: measured only at baseline, eg. demographic variables
+            -change: measured both before and after treatment, eg. depressions scores
+            -in_dose: measured during dosing session, thus, have a value for time, eg. vitals
+            -post_dose: measured only post-dosing, eg. measures of trip quality like MEQ
+            -post_trt: measured only post-treatment, eg. treatment satisfaction
         '''
 
         assert isinstance(df_master, pd.DataFrame)
@@ -681,10 +678,8 @@ class Helpers():
     ''' Various helper functions '''
 
     @staticmethod
-    def sig_marking(value):
+    def sig_marking(value:float) -> str:
         ''' Converts p-values to standard significance marks '''
-
-        assert isinstance(value, float)
 
         if 0.05 > value >= 0.01:
             return '*'
@@ -696,7 +691,7 @@ class Helpers():
             return ''
 
     @staticmethod
-    def has_time(df, measure):
+    def has_time(df:pd.DataFrame, measure:str) -> bool:
         ''' Detects whether the given measure has time, i.e. is it measured at
             multiple timepoints during the tp or not.
 
@@ -707,9 +702,6 @@ class Helpers():
             Returns:
                 - has_time (bool): has time?
         '''
-
-        assert isinstance(df, pd.DataFrame)
-        assert isinstance(measure, str)
 
         # Check if all rows of time is NaN / non-NaN
         is_all_not_nan = False
@@ -732,7 +724,6 @@ class Helpers():
         else:
             assert False
 
-        assert isinstance(has_time, bool)
         return has_time
 
 

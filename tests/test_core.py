@@ -1,10 +1,17 @@
 """
-Run from codebase directory with
-python -m pytest .\tests\
-@unittest.skip('wip')
+Run from \szb_commons\commons_codebase\:
+    python -m pytest .\tests\
+
+Use decorator to skip a test temporarily:
+    @unittest.skip('wip')
 """
 
+import sys
+path_szb_commons = 'C://Users//szb37//My Drive//Efforts//szb_commons'
+sys.path.append(path_szb_commons)
+
 import src.core as core
+import src.config as commons_config
 from unittest import mock
 import pandas as pd
 import unittest
@@ -23,37 +30,37 @@ dir_outputs = os.path.join(
 
 
 class DataWranglTests(unittest.TestCase):
+    pass
 
-    def test_get_longdf_of_measure_case0(self):
+class get_df_measure_Tests(DataWranglTests):
+
+    ''' Testing measures without time '''
+    def test_case0_get_df_measure(self):
         ''' Case of missing scores '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_measures(
+        df = core.DataWrangl.get_df_measure(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v0.csv')),
-            measure = {
+            measure_param = {
                 'instrument': 'EBI',
                 'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': None,
                 'col_score': 'ebi_score',})
 
-        # Get manual solution
-        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_longdf_of_measure_case0.csv'))
-
-        # Compare
-        df_solution.reset_index(drop=True, inplace=True)
+        # Get manual solution (sort types) and compare
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_measure_case0.csv'))
         df_solution['pID'] = df_solution['pID'].astype('int64')
         df_solution['score'] = df_solution['score'].astype('float64')
-        df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_get_longdf_of_measure_case1(self):
+    def test_case1_get_df_measure(self):
         ''' Intended use case '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_measures(
+        df = core.DataWrangl.get_df_measure(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
-            measure = {
+            measure_param = {
                 'instrument': 'EBI',
                 'measure_type': 'post_dose',
                 'measure': 'EBI',
@@ -62,36 +69,28 @@ class DataWranglTests(unittest.TestCase):
 
         # Get manual solution
         df_solution = pd.read_csv(os.path.join(dir_outputs,
-            'df_solution_get_longdf_of_measure_case1.csv'))
-
-        # Compare
-        df_solution.reset_index(drop=True, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+            'df_solution_get_df_measure_case1.csv'))
         assert df_solution.equals(df)
 
-    def test_get_longdf_of_measure_case2(self):
+    def test_case2_get_df_measure(self):
         ''' Check if col_complete=None works as intended '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_measures(
+        df = core.DataWrangl.get_df_measure(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
-            measure = {
+            measure_param = {
                 'instrument': 'EBI',
                 'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': None,
                 'col_score': 'ebi_score',})
 
-        # Get manual solution
+        # Get manual solution & solution
         df_solution = pd.read_csv(os.path.join(dir_outputs,
-            'df_solution_get_longdf_of_measure_case2.csv'))
-
-        # Compare
-        df_solution.reset_index(drop=True, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+            'df_solution_get_df_measure_case2.csv'))
         assert df_solution.equals(df)
 
-    def test_get_longdf_of_measure_case3(self):
+    def test_case3_get_df_measure(self):
         ''' Check if None and math.nan scores removed '''
 
         # Edit scores
@@ -100,70 +99,102 @@ class DataWranglTests(unittest.TestCase):
         df_redcap1.iloc[1, 8] = None
 
         # Calculate
-        df = core.DataWrangl.get_longdf_measures(
+        df = core.DataWrangl.get_df_measure(
             df_redcap = df_redcap1,
-            measure = {
+            measure_param = {
                 'instrument': 'EBI',
                 'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(dir_outputs,
-            'df_solution_get_longdf_of_measure_case3.csv'))
-
-        # Compare
-        df_solution.reset_index(drop=True, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+            'df_solution_get_df_measure_case3.csv'))
         assert df_solution.equals(df)
 
-    def test_get_longdf_of_measure_case4(self):
+    def test_case4_get_df_measure(self):
         ''' Check whether extending cols_to_keep works '''
 
         # Calculate
-        df = core.DataWrangl.get_longdf_measures(
+        df = core.DataWrangl.get_df_measure(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
             cols_to_keep = ['pID', 'tp', 'ebi_1', 'ebi_2'],
-            measure = {
+            measure_param = {
                 'instrument': 'EBI',
                 'measure_type': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(dir_outputs,
-            'df_solution_get_longdf_of_measure_case4.csv'))
-
-        # Compare
-        df_solution.reset_index(drop=True, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+            'df_solution_get_df_measure_case4.csv'))
         assert df_solution.equals(df)
 
-        ### Case where cols_to_keep is empty
+    ''' Testing measures with time '''
+    def test_case5_get_df_measure(self):
 
         # Calculate
-        df = core.DataWrangl.get_longdf_measures(
-            df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v1.csv')),
-            cols_to_keep = [],
-            measure = {
-                'instrument': 'EBI',
-                'measure_type': 'post_dose',
-                'measure': 'EBI',
-                'col_complete': 'ebi_complete',
-                'col_score': 'ebi_score',})
+        df = core.DataWrangl.get_df_measure(
+            pd.read_csv(os.path.join(dir_inputs, 'df_redcap_indosemeasures_v0.csv')),
+            commons_config.indose_measure_params[0],)
 
-        # Get manual solution
-        df_solution = pd.read_csv(os.path.join(dir_outputs,
-            'df_solution_get_longdf_of_measure_case41.csv'))
-
-        # Compare
-        df_solution.reset_index(drop=True, inplace=True)
-        df.reset_index(drop=True, inplace=True)
+        # Get manual solution and compare
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_measure_case5.csv'))
         assert df_solution.equals(df)
 
-    def test_add_sum_scores_case0(self):
+    def test_case6_get_df_measure(self):
+
+        # Calculate
+        df = core.DataWrangl.get_df_measure(
+            pd.read_csv(os.path.join(dir_inputs, 'df_redcap_indosemeasures_v0.csv')),
+            commons_config.indose_measure_params[13],)
+
+        # Get manual solution and compare
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_measure_case6.csv'))
+        assert df_solution.equals(df)
+
+    def test_case7_get_df_measure(self):
+
+        # Calculate
+        df = core.DataWrangl.get_df_measure(
+            pd.read_csv(os.path.join(dir_inputs, 'df_redcap_indosemeasures_v1.csv')),
+            commons_config.indose_measure_params[5],)
+
+        # Get manual solution and compare
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_measure_case7.csv'))
+        assert df_solution.equals(df)
+
+class get_df_tp_ndays_Tests(DataWranglTests):
+    ''' Testing core.DataWrangl.get_df_tp_ndays() '''
+
+    def test_case0_get_df_tp_ndays(self):
+
+        # Calculate
+        df = core.DataWrangl.get_df_tp_ndays(
+            df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_wdates_case0.csv')),)
+        df.reset_index(drop=True, inplace=True)
+
+        # Get manual solution & compare
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_ get_df_tp_ndays_case0.csv'))
+        assert df_solution.equals(df)
+
+    def test_case1_get_df_tp_ndays(self):
+
+        # Calculate
+        df = core.DataWrangl.get_df_tp_ndays(
+            df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_wdates_case1.csv')),)
+        df.reset_index(drop=True, inplace=True)
+
+        # Get manual solution & compare
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_ get_df_tp_ndays_case1.csv'))
+        assert df_solution.equals(df)
+
+class add_sum_scores_Tests(DataWranglTests):
+    ''' Testing core.DataWrangl.add_sum_scores() '''
+
+    def test_case0_add_sum_scores(self):
         ''' Case of not summing anything '''
 
         # Calculate
@@ -181,7 +212,7 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_add_sum_scores_case1(self):
+    def test_case1_add_sum_scores(self):
         ''' Intended case '''
 
         # Calculate
@@ -199,7 +230,7 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_add_sum_scores_case2(self):
+    def test_case2_add_sum_scores(self):
         ''' Test normalization '''
 
         # Calculate
@@ -217,14 +248,14 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-        ### Normalize by_item_number case
+        ### Normalize by_nitems case
         # Calculate
         df = core.DataWrangl.add_sum_scores(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
             col_complete = 'ebi_complete',
-            normalize = 'by_item_number',)
+            normalize = 'by_nitems',)
 
         # Get manual solution
         df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_add_sum_scores_case21.csv'))
@@ -234,15 +265,15 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-        ### Normalize by_max_value case
+        ### Normalize by_maxscore case
         # Calculate
         df = core.DataWrangl.add_sum_scores(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
             col_complete = 'ebi_complete',
-            normalize = 'by_max_value',
-            max_value = 5,)
+            normalize = 'by_maxscore',
+            max_item_score = 5,)
 
         # Get manual solution
         df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_add_sum_scores_case22.csv'))
@@ -252,15 +283,15 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-        ### Normalize by_max_value case; change max value
+        ### Normalize by_maxscore case; change max value
         # Calculate
         df = core.DataWrangl.add_sum_scores(
             df_redcap = pd.read_csv(os.path.join(dir_inputs, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
             col_complete = 'ebi_complete',
-            normalize = 'by_max_value',
-            max_value = 2,)
+            normalize = 'by_maxscore',
+            max_item_score = 2,)
 
         # Get manual solution
         df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_add_sum_scores_case23.csv'))
@@ -270,7 +301,7 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_add_sum_scores_case3(self):
+    def test_case3_add_sum_scores(self):
         ''' Missing data case. Should also produce print (use "python -m pytest -s .\tests\" to see in terminal):
                 "Missing items from sum score calculation at row index (will skip rows from sum scores): [0, 1]"
         '''
@@ -295,7 +326,10 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_add_delta_scores_case1(self):
+class add_delta_scores_Tests(DataWranglTests):
+    ''' Testing core.DataWrangl.add_delta_scores() '''
+
+    def test_case1_add_delta_scores(self):
         ''' Intended use case '''
 
         # Calculate
@@ -328,7 +362,7 @@ class DataWranglTests(unittest.TestCase):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_add_delta_scores_case2(self):
+    def test_case2_add_delta_scores(self):
         ''' Testing case of undecided_has_time
             Should also print message "Can not decide whether measure has time: ['EBI', 'INT_fake']"
         '''
@@ -349,46 +383,31 @@ class DataWranglTests(unittest.TestCase):
 
 
 class AnalysisTests(unittest.TestCase):
+    pass
 
-    def test_get_df_observed_case1(self):
-        ''' Intended use case '''
+class get_df_observed_Tests(AnalysisTests):
+    ''' Testing core.DataWrangl.get_df_observed() '''
+
+    def test_case0_get_df_observed(self):
 
         # Calculate
         df = core.Analysis.get_df_observed(
             df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v0.csv')),)
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case1.csv'), index_col=0)
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case0.csv'))
 
         # Compare
         assert df_solution.equals(df)
 
-    def test_get_df_observed_case2(self):
-        ''' Check if measures and tp inputs work as intended '''
+    def test_case1_get_df_observed(self):
 
         # Calculate
         df = core.Analysis.get_df_observed(
-            df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v0.csv')),
-            measures = ['MADRS'],
-            tps = ['bsl', 'A7', 'A21'],)
+            df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v1.csv')),)
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case2.csv'), index_col=0)
-
-        # Compare
-        assert df_solution.equals(df)
-
-    def test_get_df_observed_case3(self):
-        ''' Check if digits inputs work as intended '''
-
-        # Calculate
-        df = core.Analysis.get_df_observed(
-            df_master = pd.read_csv(os.path.join(dir_inputs, 'df_master_v0.csv')),
-            digits = 2,
-            digits_measure = {'MADRS':3, 'YMRS':4})
-
-        # Get manual solution
-        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case3.csv'), index_col=0)
+        df_solution = pd.read_csv(os.path.join(dir_outputs, 'df_solution_get_df_observed_case1.csv'))
 
         # Compare
         assert df_solution.equals(df)

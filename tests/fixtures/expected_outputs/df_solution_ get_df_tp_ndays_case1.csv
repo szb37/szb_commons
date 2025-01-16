@@ -1,0 +1,13 @@
+tp,ndays,n
+screen,-70,11
+bsl,0,
+prep1_arm_1,4,13
+prep2_arm_1,11,13
+prep3_arm_1,13,2
+A0,15,12
+INT1,18,12
+ASS1,22,12
+INT2,23,12
+INT3,33,12
+A30,45,11
+A90,101,9
