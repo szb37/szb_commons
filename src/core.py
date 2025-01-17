@@ -1,4 +1,4 @@
-import src.config as config
+#import src.config as config
 import commons_codebase.src.config as commons_config
 from statistics import mean, stdev
 from scipy import stats
@@ -11,7 +11,6 @@ import warnings
 import math
 import os
 
-
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -22,8 +21,7 @@ class DataWrangl():
     @staticmethod # DONE
     def get_df_measure(df_redcap:pd.DataFrame, measure_param:dict, cols_to_keep:list[str]=commons_config.cols_to_keep, **save)-> pd.DataFrame:
         ''' Returns all completed scores of a given measure in long-formatted df.
-            This fucntion is intended to be used for measures without time, see get_df_indose for measures w time
-            TODO: merge get_df_measure and get_df_indose
+            Rows that have missing value in either pID/tp/score columns are removed.
 
             Args:
                 - df_redcap: raw export from REDCap
@@ -54,24 +52,24 @@ class DataWrangl():
         if col_complete is not None:
             df = df.loc[(df[col_complete]==2)]
         df = df[cols_to_keep + [col_score]]
-        df = df.dropna(subset=(['pID', 'tp']+[col_score]))
 
         # rename / add bookkeeping columns
         df.rename(columns={col_score: 'score'}, inplace=True)
-        df['score'] = df['score'].astype('float64')
         df['instrument'] = measure_param['instrument']
         df['measure'] = measure_param['measure']
         df['measure_type'] = measure_param['measure_type']
 
-        ### Cleanup, save, return output
+        # deal with time
         if 'time' in measure_param.keys():
             df['time'] = measure_param['time']
-            df['time'] = df['time'].astype('float64')
-            df = df[cols_to_keep+['measure_type','instrument','measure','time','score']]
         else:
-            df = df[cols_to_keep+['measure_type','instrument','measure','score']]
+            df['time'] = math.nan
 
+        ### Cleanup, save, return output
+        df = df.dropna(subset=(['pID', 'tp', 'score']))
         df['score'] = df['score'].astype('float64')
+        df['time'] = df['time'].astype('float64')
+        df = df[cols_to_keep+['measure_type','instrument','measure','time','score']]
         df.reset_index(inplace=True, drop=True)
 
         if save!={}:
@@ -79,10 +77,10 @@ class DataWrangl():
 
         return df
 
-    @staticmethod # should be decapirated
-    def get_df_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
-        """ Special case of the get_df_indose function to deal with the idionsyhrocies of vitals measures.
-            Speifically baseline measure has different naming convention than post-baseline measures
+    @staticmethod # DONE
+    def format_bsl_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
+        """ Deal with inconcistsent naming convention between baseline and post-baseline measures
+            Need to call this before get_df_vitals().
 
             Args:
                 - df_redcap (pd.DataFrame): raw REDCAP export df
@@ -91,6 +89,8 @@ class DataWrangl():
                 - df_vitals (pd.DataFrame): long-form dataframe of vitals data
         """
 
+        assert isinstance(df_redcap, pd.DataFrame)
+
         # Change name of baseline columns to fit naming convention of other columns
         df_redcap = df_redcap.rename(
             columns={
@@ -98,57 +98,256 @@ class DataWrangl():
                 'vs_bl_sys': 'vs_dose0_sys1',
                 'vs_bl_hr': 'vs_dose0_hr1',}, inplace=False)
 
-        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_dia1')+1, column='vs_dose0_dia2', value=math.nan)
-        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_sys1')+1, column='vs_dose0_sys2', value=math.nan)
-        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_hr1')+1, column='vs_dose0_hr2', value=math.nan)
-
         df_redcap.loc[:, 'vs_dose0_dia1'] = pd.to_numeric(df_redcap['vs_dose0_dia1'])
         df_redcap.loc[:, 'vs_dose0_sys1'] = pd.to_numeric(df_redcap['vs_dose0_sys1'])
         df_redcap.loc[:, 'vs_dose0_hr1'] = pd.to_numeric(df_redcap['vs_dose0_hr1'])
 
-        measures = ['hr', 'dia', 'sys']
-        times = ['0', '30', '60', '90', '120', '240', '360']
-        readings = ['1', '2']
-        cols_vitals = [f'vs_dose{time}_{measure}{reading}' for time, measure, reading in itertools.product(times, measures, readings)]
+        # create second reading for bsl measures for consistency
+        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_dia1')+1, column='vs_dose0_dia2', value=math.nan)
+        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_sys1')+1, column='vs_dose0_sys2', value=math.nan)
+        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_hr1')+1, column='vs_dose0_hr2', value=math.nan)
 
-        df_redcap = df_redcap.loc[(df_redcap.vitals_record_complete==2)]
-        df_redcap = df_redcap[['pID', 'tp']+cols_vitals]
+        ### Save, return output
+        if save!={}:
+            df_redcap.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df_redcap
+        ### Deal with inconcistsent column headers between baseline and post-baseline measures
+
+    @staticmethod # DONE
+    def get_df_vitals(df_redcap:pd.DataFrame, measure_param:dict, **save) -> pd.DataFrame:
+        """ Special case of get_df_measure() to deal with the idiosyncrasies of vitals measures.
+            Speifically, there is either 1 or 2 readings of vitals.
+            If there are 2 readings, then the avg is propagated to the output.
+
+            Args:
+                - df_redcap (pd.DataFrame): raw REDCap export df
+                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
+                        - 'instrument': value of the "instrument" column in the returned df;
+                        - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
+                        - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
+                        - 'col_score': column name in df_redcap, which stores score
+                        - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
+
+            Returns:
+                - df_vitals (pd.DataFrame): long-form dataframe of vitals data
+        """
+
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(measure_param, dict)
+        assert all([field in measure_param.keys() for field in
+            ['instrument', 'measure', 'measure_type', 'col_complete', 'col_score',]])
+
+        df = df_redcap.loc[(df_redcap[measure_param['col_complete']]==2)]
         rows_vitals = []
 
-        for row_df_redcap in df_redcap.itertuples():
-            pID = row_df_redcap.pID
-            tp = row_df_redcap.tp
+        for row in df.itertuples():
+            pID = row.pID
+            tp = row.tp
 
-            for measure, time in itertools.product(measures, times):
+            score1 = eval(f'row.{measure_param['col_score']}1')
+            score2 = eval(f'row.{measure_param['col_score']}2')
 
-                score1 = eval(f'row_df_redcap.vs_dose{time}_{measure}1')
-                score2 = eval(f'row_df_redcap.vs_dose{time}_{measure}2')
+            if (not math.isnan(score1)) and (math.isnan(score2)):
+                score = score1
+            elif (math.isnan(score1)) and (math.isnan(score2)):
+                score = score2
+            elif (not math.isnan(score1)) and (not math.isnan(score2)):
+                score = round((score1+score2)/2, 2)
+            else:
+                assert False # there should be at least one numeric measure
 
-                if (not math.isnan(score1)) and (math.isnan(score2)):
-                    score = eval(f'row_df_redcap.vs_dose{time}_{measure}1')
-                elif (not math.isnan(score1)) and (not math.isnan(score2)):
-                    score = round((score1+score2)/2, 2)
-                else:
-                    assert False # at least there should be one NaN measure
-
-                rows_vitals.append([
-                    pID,
-                    tp,
-                    score,
-                    'VITALS',
-                    f'VITALS_{measure}',
-                    'in_dose',
-                    time])
+            rows_vitals.append([
+                pID,
+                tp,
+                'in_dose',
+                measure_param['instrument'],
+                measure_param['measure'],
+                measure_param['time'],
+                score,])
 
         df_vitals = pd.DataFrame(columns=[
             'pID',
             'tp',
-            'score',
+            'measure_type',
             'instrument',
             'measure',
-            'measure_type',
-            'time'], data=rows_vitals)
+            'time',
+            'score',], data=rows_vitals)
+
+        ### Cleanup, save, return output
+        df_vitals.dropna(subset=['pID', 'tp', 'score'], inplace=True)
+        df_vitals['score'] = df_vitals['score'].astype('float64')
+        df_vitals['time'] = df_vitals['time'].astype('float64')
+        df_vitals = df_vitals[['pID','tp','measure_type','instrument','measure','time','score']]
+        df_vitals.reset_index(inplace=True, drop=True)
+
+        if save!={}:
+            df_vitals.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
         return df_vitals
+
+    @staticmethod # DONE
+    def add_sum_scores(df_redcap:pd.DataFrame, col_complete:str, col_items:list[str], col_score:str, **kwargs) -> pd.DataFrame:
+        ''' Calculates the sum of scores for columns in 'col_items' and adds the
+            sum score to 'col_score' row of the input dataframe.
+            Designed to work with wide format REDCap dfs.
+
+            Args:
+                - df_redcap (pd.DataFrame): raw export from REDCap
+                - col_items (list of strs): list of columns that are summed
+                - col_complete (str): name of column that defined whether row is complete
+                - col_score (str): name of column where the sum scores are added
+                - norm (bool): should the value in col_score be normlaized, i.e. divided by the number of items in 'col_items'
+
+            Returns:
+                - df_redcap (pd.DataFrame): REDCap df with col_score added
+        '''
+
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(col_items, list)
+        assert all([col_item in df_redcap.columns for col_item in col_items])
+        assert isinstance(col_score, str)
+        assert col_complete in df_redcap.columns
+
+        # Check if summed columns do not have missing data
+        ridx_missingitems = []
+        for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
+            for col in col_items:
+                if (eval(f'row.{col}') is None) or (math.isnan(eval(f'row.{col}'))):
+                    ridx_missingitems.append(row.Index)
+
+        if ridx_missingitems!=[]:
+            ridx_missingitems = [ridx for ridx in set(ridx_missingitems)]
+            print(f"\nMissing items from sum score calculation at row index (will skip rows from sum scores): {ridx_missingitems} \
+                \n\tFirst summed column: {col_items[0]}")
+
+        # Sum scores
+        df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
+        df_redcap.loc[ridx_missingitems, col_score] = math.nan
+
+        # Normalize sum scores if needed
+        if 'normalize' in kwargs:
+            if kwargs['normalize']=='by_nitems':
+                norm_factor = len(col_items)
+            elif kwargs['normalize']=='by_maxscore':
+                norm_factor = len(col_items)*kwargs['max_item_score']
+
+            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_score] / norm_factor
+
+        return df_redcap
+
+    @staticmethod # DONE
+    def add_delta_scores(df_master:pd.DataFrame, delta_from_tp:str='bsl', delta_from_time:int=0) -> pd.DataFrame:
+        ''' For every pID, tp, measure triplet add delta_score from timepoint defined by delta_from_tp if the row's measure has no time (i.e. all rows have time=nan)
+            For every pID, tp, measure triplet add delta_score from the time defined by delta_from_time at the given timepoint if the row's measure has time (i.e. all rows have a non-nan time)
+
+            WARNING: not optimized, may take a few mins with larger dfs
+
+            Args:
+                - df (pd.DataFrame): longform df of trial data
+                - delta_from_tp (str): what value in "tp" designates baseline
+                - delta_from_tp (str): what value in "time" designates start
+
+            Returns:
+                - df (pd.DataFrame): longform df of trial data with delta_score added
+        '''
+
+        assert isinstance(df_master, pd.DataFrame)
+        assert isinstance(delta_from_tp, str)
+        assert isinstance(delta_from_time, int)
+
+        df_master['delta_score'] = math.nan
+        cidx_score = df_master.columns.get_loc('score')
+        cidx_dltscore = df_master.columns.get_loc('delta_score')
+        undecided_has_time=[]
+
+        for row in df_master.itertuples():
+
+            try:
+                has_time = Helpers.has_time(df_master, row.measure)
+            except UndecidedHasTime as e:
+                undecided_has_time.append(e.measure)
+                continue
+
+            # Find baseline value
+            if has_time:
+                ridx_bsl = df_master.loc[
+                    (df_master.pID == row.pID) &
+                    (df_master.measure == row.measure) &
+                    (df_master.tp == row.tp) &
+                    (df_master.time == delta_from_time)].index
+            else:
+                ridx_bsl = df_master.loc[
+                    (df_master.pID == row.pID) &
+                    (df_master.measure == row.measure) &
+                    (df_master.tp == delta_from_tp)].index
+
+            assert ((len(ridx_bsl)==1) or (len(ridx_bsl)==0))
+
+            if len(ridx_bsl)==0:
+                continue
+            else:
+                ridx_bsl = ridx_bsl[0]
+
+            # Add delta score
+            bsl_score = df_master.iloc[ridx_bsl, cidx_score]
+            tp_score = row.score
+            df_master.iloc[row.Index, cidx_dltscore] = tp_score-bsl_score
+
+        # Warn user
+        if len(undecided_has_time)!=0:
+            undecided_has_time = set(undecided_has_time)
+            print(f"Can not decide whether measure has time: {[measure for measure in undecided_has_time]}")
+
+        return df_master
+
+
+class Analysis():
+    ''' Functions for data analysis '''
+
+    @staticmethod # DONE
+    def get_df_observed(df_master:pd.DataFrame, digits:int=3, **save) -> pd.DataFrame:
+        """ Creates a dataframe with the observed mean and SD of all measures at every tp.
+            Missing data are ignored from the mean/sd calculations.
+
+            Args:
+                - df_master: long-form master dataframe containing all data
+                - digits: round mean and SD to how many digits?
+                - save: optional save information
+
+            Returns:
+                - df_observed: df of observed means and SDs at every tp
+        """
+
+        ### Initate output
+        measures = df_master.measure.unique().tolist()
+        tps = df_master.tp.unique().tolist()
+        rows_observed = []
+
+        ### Iterate through measures and tps, calculate means and SDs
+        for measure, tp in itertools.product(measures, tps):
+
+            scores = df_master.loc[(df_master.measure==measure) & (df_master.tp==tp)].score.dropna().tolist()
+            if len(scores)<3: # skip if not enough data to calc SD
+                continue
+
+            rows_observed.append([
+                measure,
+                tp,
+                round(mean(scores), digits),
+                round(stdev(scores), digits),])
+
+        ### Create DF from list of rows
+        df_observed = pd.DataFrame(
+            columns=['measure','tp','mean','sd'],
+            data=rows_observed)
+
+        ### Save if needed, return output
+        if save!={}:
+            df_observed.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df_observed
 
     @staticmethod # DONE
     def get_df_tp_ndays(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
@@ -208,157 +407,6 @@ class DataWrangl():
             df_tp_ndays.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
 
         return df_tp_ndays
-
-    @staticmethod # DONE
-    def add_sum_scores(df_redcap:pd.DataFrame, col_complete:str, col_items:list[str], col_score:str, **kwargs) -> pd.DataFrame:
-        ''' Calculates the sum of scores for columns in 'col_items' and adds the
-            sum score to 'col_score' row of the input dataframe.
-            Designed to work with wide format REDCap dfs.
-
-            Args:
-                - df_redcap (pd.DataFrame): raw export from REDCap
-                - col_items (list of strs): list of columns that are summed
-                - col_complete (str): name of column that defined whether row is complete
-                - col_score (str): name of column where the sum scores are added
-                - norm (bool): should the value in col_score be normlaized, i.e. divided by the number of items in 'col_items'
-
-            Returns:
-                - df_redcap (pd.DataFrame): REDCap df with col_score added
-        '''
-
-        # Check if summed columns do not have missing data
-        ridx_missingitems = []
-        for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
-            for col in col_items:
-                if (eval(f'row.{col}') is None) or (math.isnan(eval(f'row.{col}'))):
-                    ridx_missingitems.append(row.Index)
-
-        if ridx_missingitems!=[]:
-            ridx_missingitems = [ridx for ridx in set(ridx_missingitems)]
-            print(f"\nMissing items from sum score calculation at row index (will skip rows from sum scores): {ridx_missingitems} \
-                \n\tFirst summed column: {col_items[0]}")
-
-        # Sum scores
-        df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
-        df_redcap.loc[ridx_missingitems, col_score] = math.nan
-
-        # Normalize sum scores if needed
-        if 'normalize' in kwargs:
-            if kwargs['normalize']=='by_nitems':
-                norm_factor = len(col_items)
-            elif kwargs['normalize']=='by_maxscore':
-                norm_factor = len(col_items)*kwargs['max_item_score']
-
-            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_score] / norm_factor
-
-        return df_redcap
-
-    @staticmethod # DONE
-    def add_delta_scores(df_master:pd.DataFrame, delta_from_tp:str='bsl', delta_from_time:int=0) -> pd.DataFrame:
-        ''' For every pID, tp, measure triplet add delta_score from timepoint defined by delta_from_tp if the row's measure has no time (i.e. all rows have time=nan)
-            For every pID, tp, measure triplet add delta_score from the time defined by delta_from_time at the given timepoint if the row's measure has time (i.e. all rows have a non-nan time)
-
-            WARNING: not optimized, may take a few mins with larger dfs
-
-            Args:
-                - df (pd.DataFrame): longform df of trial data
-                - delta_from_tp (str): what value in "tp" designates baseline
-                - delta_from_tp (str): what value in "time" designates start
-
-            Returns:
-                - df (pd.DataFrame): longform df of trial data with delta_score added
-        '''
-
-        df_master['delta_score'] = math.nan
-        cidx_score = df_master.columns.get_loc('score')
-        cidx_dltscore = df_master.columns.get_loc('delta_score')
-        undecided_has_time=[]
-
-        for row in df_master.itertuples():
-
-            try:
-                has_time = Helpers.has_time(df_master, row.measure)
-            except UndecidedHasTime as e:
-                undecided_has_time.append(e.measure)
-                continue
-
-            # Find baseline value
-            if has_time:
-                ridx_bsl = df_master.loc[
-                    (df_master.pID == row.pID) &
-                    (df_master.measure == row.measure) &
-                    (df_master.tp == row.tp) &
-                    (df_master.time == delta_from_time)].index
-            else:
-                ridx_bsl = df_master.loc[
-                    (df_master.pID == row.pID) &
-                    (df_master.measure == row.measure) &
-                    (df_master.tp == delta_from_tp)].index
-
-            assert ((len(ridx_bsl)==1) or (len(ridx_bsl)==0))
-
-            if len(ridx_bsl)==0:
-                continue
-            else:
-                ridx_bsl = ridx_bsl[0]
-
-            # Add delta score
-            bsl_score = df_master.iloc[ridx_bsl, cidx_score]
-            tp_score = row.score
-            df_master.iloc[row.Index, cidx_dltscore] = tp_score-bsl_score
-
-        # Warn user
-        if len(undecided_has_time)!=0:
-            undecided_has_time = set(undecided_has_time)
-            print(f"Can not decide whether measure has time: {[measure for measure in undecided_has_time]}")
-
-        return df_master
-
-
-class Analysis():
-
-    @staticmethod # DONE
-    def get_df_observed(df_master:pd.DataFrame, digits:int=3, **save) -> pd.DataFrame:
-        """ Creates a dataframe with the observed mean and SD of all measures at every tp.
-            Missing data are ignored from the mean/sd calculations.
-
-            Args:
-                - df_master: long-form master dataframe containing all data
-                - digits: round mean and SD to how many digits?
-                - save: optional save information
-
-            Returns:
-                - df_observed: df of observed means and SDs at every tp
-        """
-
-        ### Initate output
-        measures = df_master.measure.unique().tolist()
-        tps = df_master.tp.unique().tolist()
-        rows_observed = []
-
-        ### Iterate through measures and tps, calculate means and SDs
-        for measure, tp in itertools.product(measures, tps):
-
-            scores = df_master.loc[(df_master.measure==measure) & (df_master.tp==tp)].score.dropna().tolist()
-            if len(scores)<3: # skip if not enough data to calc SD
-                continue
-
-            rows_observed.append([
-                measure,
-                tp,
-                round(mean(scores), digits),
-                round(stdev(scores), digits),])
-
-        ### Create DF from list of rows
-        df_observed = pd.DataFrame(
-            columns=['measure','tp','mean','sd'],
-            data=rows_observed)
-
-        ### Save if needed, return output
-        if save!={}:
-            df_observed.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
-
-        return df_observed
 
     @staticmethod
     def get_corrmats(df:pd.DataFrame, vars1:list[str], vars2:list[str], dir_out, prefix_out, do_draw:bool=True, save=False, **kwargs):
@@ -647,7 +695,6 @@ class CheckDf():
             no time for not in_dose measures
         '''
         assert isinstance(df_master, pd.DataFrame)
-
         assert all([((isinstance(score, float)) or (isinstance(score, int))) for score in df_master.score])
         assert all([((isinstance(delta_score, float)) or (isinstance(delta_score, int))) for delta_score in df_master.delta_score])
 
