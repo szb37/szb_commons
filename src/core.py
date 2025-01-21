@@ -302,6 +302,38 @@ class DataWrangl():
 
         return df_master
 
+    @staticmethod # pivot_df_master_for_corrmat
+    def widen_master(df_master:pd.DataFrame, measures1:list[str], tp1:str, use_delta1:bool, measures2:list[str], tp2:str, use_delta2:bool) -> pd.DataFrame:
+        ''' Convert long-form master df to wide-format df
+
+            Args:
+                - df_master(pd.DataFrame): master df of the trial
+                - measures1(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
+                - tp1(str): use scores from what timepoint for measures in the measures1 list
+                - use_delta1(bool): use delta_score/score in the measure's column for measures in the measures1 list
+                - measures2(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
+                - tp2(str): use scores from what timepoint for measures in the measures2 list
+                - use_delta2(bool): use delta_score/score in the measure's column for measures in the measures1 list
+
+            Return:
+                - df(pd.DataFrame): wide-format data frame
+        '''
+
+        df = df_master.loc[
+            ((df_master.tp==tp1) & (df_master.measure.isin(measures1))) |
+            ((df_master.tp==tp2) & (df_master.measure.isin(measures2)))]
+
+        if use_delta1:  # we want to correlate delta_scores w baseline values; copy delta_score values to score column for outcomes
+            df.loc[(df.tp==tp1) & (df.measure.isin(measures1)), 'score'] = df.loc[(df.tp==tp1) & (df.measure.isin(measures1)), 'delta_score']
+
+        if use_delta2:  # we want to correlate delta_scores w baseline values; copy delta_score values to score column for outcomes
+            df.loc[(df.tp==tp2) & (df.measure.isin(measures2)), 'score'] = df.loc[(df.tp==tp2) & (df.measure.isin(measures2)), 'delta_score']
+
+        df = pd.pivot_table(df, index=['pID',], columns='measure', values='score', dropna=False)
+        df.reset_index(inplace=True)
+
+        return df
+
 
 class Analysis():
     ''' Functions for data analysis '''
@@ -408,15 +440,15 @@ class Analysis():
 
         return df_tp_ndays
 
-    @staticmethod
-    def get_corrmats(df:pd.DataFrame, vars1:list[str], vars2:list[str], dir_out, prefix_out, do_draw:bool=True, save=False, **kwargs):
-        """ Calculates and corr coeffs and associated p-values between all pairs of vars1 and vars2
+    @staticmethod #dir_out, prefix_out,
+    def get_corrmats(df:pd.DataFrame, measures1:list[str], measures2:list[str], methods:list[str]=commons_config.corr_methods, draw:bool=True, **save):
+        """ Calculates and corr coeffs and associated p-values between all pairs of measures1 and measures2
             Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
 
             Args:
-                df (pd.DataFrame): wide-format dataframe where all elements of vars1 and vars2 are columns
-                vars1 (list of strs): predictor variables; x-axis of corr matrix
-                vars2 (list of strs): outcome variables; y-axis of corr matrix
+                df (pd.DataFrame): wide-format dataframe where all elements of measures1 and measures2 are columns
+                measures1 (list of strs): predictor variables; x-axis of corr matrix
+                measures2 (list of strs): outcome variables; y-axis of corr matrix
                 save(boolean): save results?
                 dir_out(str): string to folder where results saved
                 prefix_out(str): filename prefix of the outputs
@@ -432,11 +464,11 @@ class Analysis():
             assert sum([isinstance(var, str) for var in eval(f'vars{idx}')])
             assert sum([var in df.columns for var in eval(f'vars{idx}')])
 
-        df_coeffs = pd.DataFrame(columns=vars1, index=vars2)
-        df_pvalues = pd.DataFrame(columns=vars1, index=vars2)
+        df_coeffs = pd.DataFrame(columns=measures1, index=measures2)
+        df_pvalues = pd.DataFrame(columns=measures1, index=measures2)
 
-        for method in ['pearson', 'spearman', 'kendall']:
-            for var1, var2 in itertools.product(vars1, vars2):
+        for method in methods:
+            for var1, var2 in itertools.product(measures1, measures2):
 
                 df_tmp = df[[var1, var2]]
                 df_tmp = df_tmp.dropna()
@@ -451,18 +483,20 @@ class Analysis():
                 df_coeffs.at[var2, var1] = round(result_corr.statistic, 3)
                 df_pvalues.at[var2, var1] = round(result_corr.pvalue, 3)
 
-            if save:
-                df_coeffs.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_coeffs.csv'), index=False)
-                df_pvalues.to_csv(os.path.join(dir_out, f'{prefix_out}_{method}_pvalues.csv'), index=False)
-
-            if do_draw:
+            if draw:
                 Plots.draw_corrmat(
                     df_coeffs = df_coeffs,
                     df_pvalues = df_pvalues,
-                    dir_out = dir_out,
-                    fname_out = f'{prefix_out}_{method}_plot',
-                    save = save,
-                    title = kwargs['title']+f'_{method.upper()}')
+                    dir_out = save['dir_out'],
+                    fname_out = f'{save['fname_out']}_{method}_plot.csv',
+                    save = True,
+                    title = f'{save['fname_out']} {method.upper()}')
+
+        if save!={}:
+            df_coeffs.to_csv(os.path.join(save['dir_out'], f'{save['fname_out']}_{method}_coeffs.csv'), index=False)
+            df_pvalues.to_csv(os.path.join(save['dir_out'], f'{save['fname_out']}_{method}_pvalues.csv'), index=False)
+
+        return df_coeffs, df_pvalues
 
 
 class Plots():

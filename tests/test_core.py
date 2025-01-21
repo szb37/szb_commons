@@ -1,6 +1,7 @@
 """
 Run from \szb_commons\commons_codebase\:
-    python -m pytest .\tests\
+    python -m pytest .\tests\test_core.py::DataWranglTests::widen_master_Tests
+
 
 Use decorator to skip a test temporarily:
     @unittest.skip('wip')
@@ -385,6 +386,85 @@ class add_delta_scores_Tests(DataWranglTests):
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
+
+
+class widen_master_Tests(DataWranglTests):
+
+    def test_case0_widen_master(self):
+
+        # Calculate
+        df = core.DataWrangl.widen_master(
+            df_master = pd.read_csv(os.path.join(folders.fixtures_in, 'df_master_v2.csv')),
+            measures1= ['bsl1', 'bsl2'],
+            tp1 = 'bsl' ,
+            use_delta1=False,
+            measures2 = ['measure1', 'measure2'],
+            tp2 = 'A28',
+            use_delta2=True)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_widen_master_case0.csv'))
+
+        # Compare
+        df_solution.reset_index(drop=True, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+
+        df_solution['bsl1'] = df_solution['bsl1'].astype('float64')
+        df_solution['bsl2'] = df_solution['bsl2'].astype('float64')
+        df_solution['measure1'] = df_solution['measure1'].astype('float64')
+        df_solution['measure2'] = df_solution['measure2'].astype('float64')
+
+        assert df_solution.equals(df)
+
+    def test_case1_widen_master(self):
+
+        # Calculate
+        df = core.DataWrangl.widen_master(
+            df_master = pd.read_csv(os.path.join(folders.fixtures_in, 'df_master_v2.csv')),
+            measures1= ['bsl1',],
+            tp1 = 'bsl' ,
+            use_delta1=False,
+            measures2 = ['measure2'],
+            tp2 = 'B28',
+            use_delta2=False)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_widen_master_case1.csv'))
+
+        # Compare
+        df_solution.reset_index(drop=True, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+
+        df_solution['bsl1'] = df_solution['bsl1'].astype('float64')
+        df_solution['measure2'] = df_solution['measure2'].astype('float64')
+
+        assert df_solution.equals(df)
+
+    def test_case2_widen_master(self):
+
+        # Calculate
+        df = core.DataWrangl.widen_master(
+            df_master = pd.read_csv(os.path.join(folders.fixtures_in, 'df_master_v2.csv')),
+            measures1= ['bsl1', 'bsl2'],
+            tp1 = 'bsl' ,
+            use_delta1=True,
+            measures2 = ['measure1', 'measure2'],
+            tp2 = 'A28',
+            use_delta2=True)
+
+        # Get manual solution
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_widen_master_case2.csv'))
+
+        # Compare
+        df_solution.reset_index(drop=True, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        df_solution['bsl1'] = df_solution['bsl1'].astype('float64')
+        df_solution['bsl2'] = df_solution['bsl2'].astype('float64')
+        df_solution['measure1'] = df_solution['measure1'].astype('float64')
+        df_solution['measure2'] = df_solution['measure2'].astype('float64')
+
+        assert df_solution.equals(df)
+
 
 
 class AnalysisTests(unittest.TestCase):

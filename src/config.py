@@ -4,6 +4,7 @@ import itertools
 measure_types = ['bsl', 'change', 'in_dose', 'post_dose', 'post_trt']
 cols_checkduplicates = ['pID', 'tp', 'measure', 'time']
 cols_to_keep = ['pID', 'tp']
+corr_methods = ['pearson', 'spearman', 'kendall']
 
 ### Examples to show format of measure_params
 #   measure_params is a list of dictionaries, where each dictionary defines a measure
