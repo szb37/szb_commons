@@ -302,7 +302,7 @@ class DataWrangl():
 
         return df_master
 
-    @staticmethod # pivot_df_master_for_corrmat
+    @staticmethod # DONE
     def widen_master(df_master:pd.DataFrame, measures1:list[str], tp1:str, use_delta1:bool, measures2:list[str], tp2:str, use_delta2:bool) -> pd.DataFrame:
         ''' Convert long-form master df to wide-format df
 
@@ -319,14 +319,20 @@ class DataWrangl():
                 - df(pd.DataFrame): wide-format data frame
         '''
 
+        assert isinstance(df_master, pd.DataFrame)
+        for idx in [1,2]:
+            assert isinstance(eval(f'measures{idx}'), list)
+            assert sum([isinstance(measure, str) for measure in eval(f'measures{idx}')])
+            assert isinstance(eval(f'tp{idx}'), str)
+
         df = df_master.loc[
             ((df_master.tp==tp1) & (df_master.measure.isin(measures1))) |
             ((df_master.tp==tp2) & (df_master.measure.isin(measures2)))]
 
-        if use_delta1:  # we want to correlate delta_scores w baseline values; copy delta_score values to score column for outcomes
+        if use_delta1:
             df.loc[(df.tp==tp1) & (df.measure.isin(measures1)), 'score'] = df.loc[(df.tp==tp1) & (df.measure.isin(measures1)), 'delta_score']
 
-        if use_delta2:  # we want to correlate delta_scores w baseline values; copy delta_score values to score column for outcomes
+        if use_delta2:
             df.loc[(df.tp==tp2) & (df.measure.isin(measures2)), 'score'] = df.loc[(df.tp==tp2) & (df.measure.isin(measures2)), 'delta_score']
 
         df = pd.pivot_table(df, index=['pID',], columns='measure', values='score', dropna=False)
@@ -440,7 +446,7 @@ class Analysis():
 
         return df_tp_ndays
 
-    @staticmethod #dir_out, prefix_out,
+    @staticmethod
     def get_corrmats(df:pd.DataFrame, measures1:list[str], measures2:list[str], methods:list[str]=commons_config.corr_methods, draw:bool=True, **save):
         """ Calculates and corr coeffs and associated p-values between all pairs of measures1 and measures2
             Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
@@ -470,15 +476,15 @@ class Analysis():
         for method in methods:
             for var1, var2 in itertools.product(measures1, measures2):
 
-                df_tmp = df[[var1, var2]]
-                df_tmp = df_tmp.dropna()
+                df_pair = df[[var1, var2]]
+                df_pair = df_pair.dropna()
 
                 if method == 'pearson':
-                     result_corr = stats.pearsonr(df_tmp[var1], df_tmp[var2])
+                     result_corr = stats.pearsonr(df_pair[var1], df_pair[var2])
                 elif method == 'spearman':
-                     result_corr = stats.spearmanr(df_tmp[var1], df_tmp[var2])
+                     result_corr = stats.spearmanr(df_pair[var1], df_pair[var2])
                 elif method == 'kendall':
-                     result_corr = stats.kendalltau(df_tmp[var1], df_tmp[var2])
+                     result_corr = stats.kendalltau(df_pair[var1], df_pair[var2])
 
                 df_coeffs.at[var2, var1] = round(result_corr.statistic, 3)
                 df_pvalues.at[var2, var1] = round(result_corr.pvalue, 3)
