@@ -33,7 +33,6 @@ indose_measure_params = [
         'time': time,                                # value for time column in df_master
     } for rater, time in itertools.product(raters, times)]
 
-
 ### example measure_params for vitals; just like indose_measure_params, vitals have time
 measures = ['hr', 'dia', 'sys']
 times = ['0', '30', '60', '90', '120', '240', '360']

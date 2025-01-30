@@ -1,7 +1,6 @@
 """
 Run from \szb_commons\commons_codebase\:
-    python -m pytest .\tests\test_core.py::DataWranglTests::widen_master_Tests
-
+    python -m pytest .\tests\test_core.py
 
 Use decorator to skip a test temporarily:
     @unittest.skip('wip')
@@ -25,7 +24,7 @@ import os
 class DataWranglTests(unittest.TestCase):
     pass
 
-class get_df_measure_Tests(DataWranglTests):
+class GetDfMeasureTests(DataWranglTests):
 
     ''' Testing measures without time '''
     def test_case0_get_df_measure(self):
@@ -161,8 +160,7 @@ class get_df_measure_Tests(DataWranglTests):
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_get_df_measure_case7.csv'))
         assert df_solution.equals(df)
 
-
-class get_df_vitals_Tests(DataWranglTests):
+class GetDfVitalsTests(DataWranglTests):
 
     def test_case0_get_df_vitals(self):
 
@@ -199,7 +197,7 @@ class get_df_vitals_Tests(DataWranglTests):
             'df_solution_get_df_vitals_case2.csv'))
         assert df_solution.equals(df)
 
-class add_sum_scores_Tests(DataWranglTests):
+class AddSumScoresTests(DataWranglTests):
 
     def test_case0_add_sum_scores(self):
         ''' Case of not summing anything '''
@@ -333,7 +331,7 @@ class add_sum_scores_Tests(DataWranglTests):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-class add_delta_scores_Tests(DataWranglTests):
+class AddDeltaScoresTests(DataWranglTests):
 
     def test_case1_add_delta_scores(self):
         ''' Intended use case '''
@@ -387,8 +385,7 @@ class add_delta_scores_Tests(DataWranglTests):
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-
-class widen_master_Tests(DataWranglTests):
+class WidenMasterTests(DataWranglTests):
 
     def test_case0_widen_master(self):
 
@@ -466,11 +463,10 @@ class widen_master_Tests(DataWranglTests):
         assert df_solution.equals(df)
 
 
-
 class AnalysisTests(unittest.TestCase):
     pass
 
-class get_df_observed_Tests(AnalysisTests):
+class GetDfObservedTests(AnalysisTests):
 
     def test_case0_get_df_observed(self):
 
@@ -496,7 +492,7 @@ class get_df_observed_Tests(AnalysisTests):
         # Compare
         assert df_solution.equals(df)
 
-class get_df_tp_ndays_Tests(AnalysisTests):
+class GetDfTpNdaysTests(AnalysisTests):
 
     def test_case0_get_df_tp_ndays(self):
 
@@ -519,3 +515,101 @@ class get_df_tp_ndays_Tests(AnalysisTests):
         # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_ get_df_tp_ndays_case1.csv'))
         assert df_solution.equals(df)
+
+class GetCorrmatTests(AnalysisTests):
+
+    def test_case0_get_corrmat(self):
+
+        df_master = pd.read_csv(os.path.join(folders.fixtures_in, 'df_master_for_corrmat.csv'))
+        vars_outcome = ['MADRS', 'PANSS', 'ISI', 'YMRS', 'BRQ', 'QOLBD', 'ECRM16_anx', 'ECRM16_avoid']
+        vars_bsl = ['ACE', 'PCL5', 'TE_sum', 'TE_pos', 'TE_neg',]
+
+        df = core.DataWrangl.widen_master(
+            df_master = df_master,
+            measures1 = vars_bsl,
+            tp1 = 'bsl',
+            use_delta1 = False,
+            measures2 = vars_outcome,
+            tp2 = 'A21',
+            use_delta2 = True)
+
+        ### Check Pearson correlation for A21-bsl_vs_baseline case
+        df_coeffs, df_pvalues = core.Analysis.get_corrmats(
+            df = df,
+            measures1 = vars_bsl,
+            measures2 = vars_outcome,
+            methods = ['pearson',],)
+        df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_pearson_coeffs.csv'), index_col=0)
+        df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_pearson_pvalues.csv'), index_col=0)
+        assert df_solution_coeffs.equals(df_coeffs)
+        assert df_solution_pvalues.equals(df_pvalues)
+
+        ### Check Spearman correlation for A21-bsl_vs_baseline case
+        df_coeffs, df_pvalues = core.Analysis.get_corrmats(
+            df = df,
+            measures1 = vars_bsl,
+            measures2 = vars_outcome,
+            methods = ['spearman',],)
+        df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_spearman_coeffs.csv'), index_col=0)
+        df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_spearman_pvalues.csv'), index_col=0)
+        assert df_solution_coeffs.equals(df_coeffs)
+        assert df_solution_pvalues.equals(df_pvalues)
+
+        ### Check Kendall correlation for A21-bsl_vs_baseline case
+        df_coeffs, df_pvalues = core.Analysis.get_corrmats(
+            df = df,
+            measures1 = vars_bsl,
+            measures2 = vars_outcome,
+            methods = ['kendall',],)
+        df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_kendall_coeffs.csv'), index_col=0)
+        df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_kendall_pvalues.csv'), index_col=0)
+        assert df_solution_coeffs.equals(df_coeffs)
+        assert df_solution_pvalues.equals(df_pvalues)
+
+    def test_case1_get_corrmat(self):
+
+        df_master = pd.read_csv(os.path.join(folders.fixtures_in, 'df_master_for_corrmat.csv'))
+        vars_outcome = ['MADRS', 'PANSS', 'ISI', 'YMRS', 'BRQ', 'QOLBD', 'ECRM16_anx', 'ECRM16_avoid']
+        vars_session = ['EBI', 'PIQ', 'TEQ', 'CEQ', 'MEQ_sum', 'MEQ_myst', 'MEQ_mood', 'MEQ_tran', 'MEQ_inef']
+
+        df = core.DataWrangl.widen_master(
+            df_master = df_master,
+            measures1 = vars_session,
+            tp1 = 'A0',
+            use_delta1 = False,
+            measures2 = vars_outcome,
+            tp2 = 'A21',
+            use_delta2 = True)
+
+        ### Check Pearson correlation for A21-bsl_vs_baseline case
+        df_coeffs, df_pvalues = core.Analysis.get_corrmats(
+            df = df,
+            measures1 = vars_session,
+            measures2 = vars_outcome,
+            methods = ['pearson',],)
+        df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_pearson_coeffs.csv'), index_col=0)
+        df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_pearson_pvalues.csv'), index_col=0)
+        assert df_solution_coeffs.equals(df_coeffs)
+        assert df_solution_pvalues.equals(df_pvalues)
+
+        ### Check Spearman correlation for A21-bsl_vs_baseline case
+        df_coeffs, df_pvalues = core.Analysis.get_corrmats(
+            df = df,
+            measures1 = vars_session,
+            measures2 = vars_outcome,
+            methods = ['spearman',],)
+        df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_spearman_coeffs.csv'), index_col=0)
+        df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_spearman_pvalues.csv'), index_col=0)
+        assert df_solution_coeffs.equals(df_coeffs)
+        assert df_solution_pvalues.equals(df_pvalues)
+
+        ### Check Kendall correlation for A21-bsl_vs_baseline case
+        df_coeffs, df_pvalues = core.Analysis.get_corrmats(
+            df = df,
+            measures1 = vars_session,
+            measures2 = vars_outcome,
+            methods = ['kendall',],)
+        df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_kendall_coeffs.csv'), index_col=0)
+        df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_kendall_pvalues.csv'), index_col=0)
+        assert df_solution_coeffs.equals(df_coeffs)
+        assert df_solution_pvalues.equals(df_pvalues)
