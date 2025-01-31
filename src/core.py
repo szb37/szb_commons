@@ -1,4 +1,3 @@
-import src.config as config
 import commons_codebase.src.config as commons_config
 from statistics import mean, stdev
 from scipy import stats
@@ -78,7 +77,7 @@ class DataWrangl():
 
         return df
 
-    @staticmethod # DONE
+    @staticmethod
     def format_bsl_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
         """ Deal with inconcistsent naming convention between baseline and post-baseline measures
             Need to call this before get_df_vitals().
@@ -307,37 +306,37 @@ class DataWrangl():
         return df_master
 
     @staticmethod
-    def widen_master(df_master:pd.DataFrame, measures1:list[str], tp1:str, use_delta1:bool, measures2:list[str], tp2:str, use_delta2:bool) -> pd.DataFrame:
+    def widen_master(df_master:pd.DataFrame, xvars:list[str], x_tp:str, x_use_delta:bool, yvars:list[str], y_tp:str, y_use_delta:bool) -> pd.DataFrame:
         ''' Convert long-form master df to wide-format df
 
             Args:
                 - df_master(pd.DataFrame): master df of the trial
-                - measures1(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
-                - tp1(str): use scores from what timepoint for measures in the measures1 list
-                - use_delta1(bool): use delta_score/score in the measure's column for measures in the measures1 list
-                - measures2(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
-                - tp2(str): use scores from what timepoint for measures in the measures2 list
-                - use_delta2(bool): use delta_score/score in the measure's column for measures in the measures1 list
+                - xvars(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
+                - x_tp(str): use scores from what timepoint for measures in the xvars list
+                - x_use_delta(bool): use delta_score/score in the measure's column for measures in the xvars list
+                - yvars(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
+                - y_tp(str): use scores from what timepoint for measures in the yvars list
+                - y_use_delta(bool): use delta_score/score in the measure's column for measures in the xvars list
 
             Return:
                 - df(pd.DataFrame): wide-format data frame
         '''
 
         assert isinstance(df_master, pd.DataFrame)
-        for idx in [1,2]:
-            assert isinstance(eval(f'measures{idx}'), list)
-            assert sum([isinstance(measure, str) for measure in eval(f'measures{idx}')])
-            assert isinstance(eval(f'tp{idx}'), str)
+        for axis in ['x', 'y']:
+            assert isinstance(eval(f'{axis}vars'), list)
+            assert sum([isinstance(measure, str) for measure in eval(f'{axis}vars')])
+            assert isinstance(eval(f'{axis}_tp'), str)
 
         df = df_master.loc[
-            ((df_master.tp==tp1) & (df_master.measure.isin(measures1))) |
-            ((df_master.tp==tp2) & (df_master.measure.isin(measures2)))]
+            ((df_master.tp==x_tp) & (df_master.measure.isin(xvars))) |
+            ((df_master.tp==y_tp) & (df_master.measure.isin(yvars)))]
 
-        if use_delta1:
-            df.loc[(df.tp==tp1) & (df.measure.isin(measures1)), 'score'] = df.loc[(df.tp==tp1) & (df.measure.isin(measures1)), 'delta_score']
+        if x_use_delta:
+            df.loc[(df.tp==x_tp) & (df.measure.isin(xvars)), 'score'] = df.loc[(df.tp==x_tp) & (df.measure.isin(xvars)), 'delta_score']
 
-        if use_delta2:
-            df.loc[(df.tp==tp2) & (df.measure.isin(measures2)), 'score'] = df.loc[(df.tp==tp2) & (df.measure.isin(measures2)), 'delta_score']
+        if y_use_delta:
+            df.loc[(df.tp==y_tp) & (df.measure.isin(yvars)), 'score'] = df.loc[(df.tp==y_tp) & (df.measure.isin(yvars)), 'delta_score']
 
         df = pd.pivot_table(df, index=['pID',], columns='measure', values='score', dropna=False)
         df.reset_index(inplace=True)
@@ -451,16 +450,17 @@ class Analysis():
         return df_tp_ndays
 
     @staticmethod
-    def get_corrmats(df:pd.DataFrame, measures1:list[str], measures2:list[str], methods:list[str]=commons_config.corr_methods, **save):
-        """ Calculates and corr coeffs and associated p-values between all pairs of measures1 and measures2
+    def get_corrmats(df:pd.DataFrame, xvars:list[str], yvars:list[str], methods:list[str]=commons_config.corr_methods, save:bool=True, **kwargs):
+        """ Calculates and corr coeffs and associated p-values between all pairs of xvars and yvars
             Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
 
             Args:
-                df (pd.DataFrame): wide-format dataframe where all elements of measures1 and measures2 are columns
-                measures1 (list of strs): variables for the x-axis of corr matrix
-                measures2 (list of strs): variables for the y-axis of corr matrix
+                df (pd.DataFrame): wide-format dataframe where all elements of xvars and yvars are columns
+                xvars (list of strs): variables for the x-axis of corr matrix
+                yvars (list of strs): variables for the y-axis of corr matrix
                 methods (list of strs): what correlation method to use; elements must be pearson/spearman/kendall
-                save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
+                save (bool): save results?
+                kwargs (dict; optional): dictionary with keys to determine where output is saved, title, xlabel, ylabel
 
             Returns:
                 df_coeffs (pd.DataFrame): dataframe of correlation coefficients
@@ -468,16 +468,16 @@ class Analysis():
         """
 
         assert isinstance(df, pd.DataFrame)
-        for idx in [1,2]:
-            assert isinstance(eval(f'measures{idx}'), list)
-            assert sum([isinstance(var, str) for var in eval(f'measures{idx}')])
-            assert sum([var in df.columns for var in eval(f'measures{idx}')])
+        for axis in ['x','y']:
+            assert isinstance(eval(f'{axis}vars'), list)
+            assert sum([isinstance(var, str) for var in eval(f'{axis}vars')])
+            assert sum([var in df.columns for var in eval(f'{axis}vars')])
 
-        df_coeffs = pd.DataFrame(columns=measures1, index=measures2)
-        df_pvalues = pd.DataFrame(columns=measures1, index=measures2)
+        df_coeffs = pd.DataFrame(columns=xvars, index=yvars)
+        df_pvalues = pd.DataFrame(columns=xvars, index=yvars)
 
         for method in methods:
-            for var1, var2 in itertools.product(measures1, measures2):
+            for var1, var2 in itertools.product(xvars, yvars):
 
                 df_pair = df[[var1, var2]]
                 df_pair = df_pair.dropna()
@@ -496,19 +496,23 @@ class Analysis():
             df_coeffs = df_coeffs.astype('float64')
             df_pvalues = df_pvalues.astype('float64')
 
-            if save!={}:
-                df_coeffs.to_csv(os.path.join(save['dir_out'], f'{save['fname_out']}_{method}_coeffs.csv'))
-                df_pvalues.to_csv(os.path.join(save['dir_out'], f'{save['fname_out']}_{method}_pvalues.csv'))
+            # Save results if needed
+            if save:
+                df_coeffs.to_csv(os.path.join(kwargs['dir_out'], f'{kwargs['fname_out']}_{method}_coeffs.csv'))
+                df_pvalues.to_csv(os.path.join(kwargs['dir_out'], f'{kwargs['fname_out']}_{method}_pvalues.csv'))
 
-                if save['draw']:
-                    title = save['title'] if 'title' in save else None
-                    Plots.draw_corrmat(
-                        df_coeffs = df_coeffs,
-                        df_pvalues = df_pvalues,
-                        dir_out = save['dir_out'],
-                        fname_out = f'{save['fname_out']}_{method}',
-                        save = True,
-                        title = title)
+                title = f'{kwargs['title']}' if 'title' in kwargs else f'{method.upper()} correlation'
+                xlabel = kwargs['xlabel'] if 'xlabel' in kwargs else None
+                ylabel = kwargs['ylabel'] if 'ylabel' in kwargs else None
+
+                Plots.draw_corrmat(
+                    df_coeffs = df_coeffs,
+                    df_pvalues = df_pvalues,
+                    title = title,
+                    xlabel = xlabel,
+                    ylabel = ylabel,
+                    dir_out = kwargs['dir_out'],
+                    fname_out = f'{kwargs['fname_out']}_{method}',)
 
         return df_coeffs, df_pvalues
 
@@ -542,7 +546,7 @@ class Plots():
             patch.set_facecolor((r, g, b, alpha))
 
     @staticmethod
-    def draw_corrmat(df_coeffs, df_pvalues, dir_out, fname_out, save=True, **kwargs):
+    def draw_corrmat(df_coeffs, df_pvalues, save:bool=True, **kwargs):
         ''' Draws correlation matrix heatmap using outputs of get_corrmat()
 
             Args:
@@ -556,8 +560,6 @@ class Plots():
         assert isinstance(df_coeffs, pd.DataFrame)
         assert isinstance(df_pvalues, pd.DataFrame)
         assert isinstance(save, bool)
-        assert isinstance(dir_out, str)
-        assert isinstance(fname_out, str)
 
         fig, ax = plt.subplots(dpi=300)
 
@@ -574,21 +576,21 @@ class Plots():
         plt.xticks(rotation=45)
 
         if 'title' in kwargs:
-            ax.set_title(kwargs['title'], fontdict=config.title_fontdict)
+            ax.set_title(kwargs['title'], fontdict=commons_config.title_fontdict)
 
         if 'xlabel' in kwargs:
-            ax.set_xlabel(kwargs['xlabel'], fontdict=config.axislabel_fontdict)
+            ax.set_xlabel(kwargs['xlabel'], fontdict=commons_config.axislabel_fontdict)
 
         if 'ylabel' in kwargs:
-            ax.set_ylabel(kwargs['ylabel'], fontdict=config.axislabel_fontdict)
+            ax.set_ylabel(kwargs['ylabel'], fontdict=commons_config.axislabel_fontdict)
 
         if save:
             Plots.save_fig(
                 fig = fig,
-                dir_out  = dir_out,
-                fname_out = fname_out,
-                save_PNG = config.save_PNG,
-                save_SVG = config.save_SVG,)
+                dir_out  = kwargs['dir_out'],
+                fname_out = kwargs['fname_out'],
+                save_PNG = commons_config.save_PNG,
+                save_SVG = commons_config.save_SVG,)
 
     @staticmethod
     def draw_vitals(df_master, dir_out, prefix_out, save=True, measures=['dia', 'sys', 'hr'], **kwargs):

@@ -1,10 +1,21 @@
 import itertools
+import matplotlib.pyplot as plt
 
 ### Miscs settings
 measure_types = ['bsl', 'change', 'in_dose', 'post_dose', 'post_trt']
 cols_checkduplicates = ['pID', 'tp', 'measure', 'time']
 cols_to_keep = ['pID', 'tp']
 corr_methods = ['pearson', 'spearman', 'kendall']
+
+### Graphical settings
+plt.rcParams.update({'font.family': 'arial'})
+plt.rcParams['svg.fonttype'] = 'none'  # Ensure fonts are embedded
+plt.rcParams['text.usetex'] = False  # Use TeX to handle text (embeds fonts)
+title_fontdict = {'fontsize': 16, 'fontweight': 'bold'}
+axislabel_fontdict = {'fontsize': 14, 'fontweight': 'bold'}
+ticklabel_fontsize = 14
+save_SVG = False
+save_PNG = True
 
 ### Examples to show format of measure_params
 #   measure_params is a list of dictionaries, where each dictionary defines a measure
