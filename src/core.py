@@ -501,7 +501,7 @@ class Analysis():
                 df_coeffs.to_csv(os.path.join(kwargs['dir_out'], f'{kwargs['fname_out']}_{method}_coeffs.csv'))
                 df_pvalues.to_csv(os.path.join(kwargs['dir_out'], f'{kwargs['fname_out']}_{method}_pvalues.csv'))
 
-                title = f'{kwargs['title']}' if 'title' in kwargs else f'{method.upper()} correlation'
+                title = f'{kwargs['title']}' if 'title' in kwargs else f'{method.upper()} correlation (n={df_pair.shape[0]})'
                 xlabel = kwargs['xlabel'] if 'xlabel' in kwargs else None
                 ylabel = kwargs['ylabel'] if 'ylabel' in kwargs else None
 
