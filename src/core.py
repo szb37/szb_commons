@@ -78,6 +78,64 @@ class DataWrangl():
         return df
 
     @staticmethod
+    def get_df_tp_ndays(df_redcap:pd.DataFrame, col_date:str, **save) -> pd.DataFrame:
+        """ Calculates the average number of days for each timepoint since baseline.
+            This data is usefull when determining spacing between timepoints on various graphs
+
+            Args:
+                - df_redcap: raw REDCAP export df
+                - save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
+
+            Returns:
+                - df_tp_ndays: dataframe of timepoints and the avg days since baseline
+        """
+
+        df = df_redcap.rename(columns={col_date: 'date',})
+        df = df.loc[(df.study_visit_completion_record_complete==2)]
+        df = df[['pID', 'tp', 'date']]
+        df = df.dropna()
+        df.date = pd.to_datetime(df.date)
+        df.reset_index(drop=True, inplace=True)
+        cidx_date = df.columns.get_loc('date')
+
+        ### Prep outpur
+        df_tp_ndays_rows = []
+        df_tp_ndays_rows.append(['bsl', 0, math.nan])
+
+        ### Iterate through all patients / tps
+        for tp in df.tp.unique():
+
+            if tp=='bsl':
+                continue
+            ndays=[]
+
+            for pID in df.pID.unique():
+                row_bsl = df.loc[(df.pID==pID) & (df.tp=='bsl')]
+                row_tp = df.loc[(df.pID==pID) & (df.tp==tp)]
+
+                # calculate tp-bsl in days
+                # ignore if there is not exactly 1 row for either tp or bsl
+                if (row_bsl.shape[0]==1) & (row_tp.shape[0]==1):
+                    ndays.append(
+                        (df.iloc[row_tp.index[0], cidx_date] - df.iloc[row_bsl.index[0], cidx_date]).days)
+
+            ### Create row with avg number of days between baseline and tp
+            df_tp_ndays_rows.append([
+                tp,
+                round(np.array(ndays).mean()),
+                len(ndays)])
+
+        ### Convert list of rows to df
+        df_tp_ndays = pd.DataFrame(columns=['tp', 'ndays', 'n'], data=df_tp_ndays_rows)
+        df_tp_ndays.sort_values(by='ndays', inplace=True)
+
+        ### Save if needed, return output
+        if save!={}:
+            df_tp_ndays.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df_tp_ndays
+
+    @staticmethod
     def format_bsl_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
         """ Deal with inconcistsent naming convention between baseline and post-baseline measures
             Need to call this before get_df_vitals().
@@ -189,7 +247,45 @@ class DataWrangl():
         return df_vitals
 
     @staticmethod
-    def add_sum_scores(df_redcap:pd.DataFrame, col_complete:str, col_items:list[str], col_score:str, **normalize) -> pd.DataFrame:
+    def widen_master(df_master:pd.DataFrame, xvars:list[str], x_tp:str, x_use_delta:bool, yvars:list[str], y_tp:str, y_use_delta:bool) -> pd.DataFrame:
+        ''' Convert long-form master df to wide-format df
+
+            Args:
+                - df_master(pd.DataFrame): master df of the trial
+                - xvars(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
+                - x_tp(str): use scores from what timepoint for measures in the xvars list
+                - x_use_delta(bool): use delta_score/score in the measure's column for measures in the xvars list
+                - yvars(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
+                - y_tp(str): use scores from what timepoint for measures in the yvars list
+                - y_use_delta(bool): use delta_score/score in the measure's column for measures in the xvars list
+
+            Return:
+                - df(pd.DataFrame): wide-format data frame
+        '''
+
+        assert isinstance(df_master, pd.DataFrame)
+        for axis in ['x', 'y']:
+            assert isinstance(eval(f'{axis}vars'), list)
+            assert sum([isinstance(measure, str) for measure in eval(f'{axis}vars')])
+            assert isinstance(eval(f'{axis}_tp'), str)
+
+        df = df_master.loc[
+            ((df_master.tp==x_tp) & (df_master.measure.isin(xvars))) |
+            ((df_master.tp==y_tp) & (df_master.measure.isin(yvars)))]
+
+        if x_use_delta:
+            df.loc[(df.tp==x_tp) & (df.measure.isin(xvars)), 'score'] = df.loc[(df.tp==x_tp) & (df.measure.isin(xvars)), 'delta_score']
+
+        if y_use_delta:
+            df.loc[(df.tp==y_tp) & (df.measure.isin(yvars)), 'score'] = df.loc[(df.tp==y_tp) & (df.measure.isin(yvars)), 'delta_score']
+
+        df = pd.pivot_table(df, index=['pID',], columns='measure', values='score', dropna=False)
+        df.reset_index(inplace=True)
+
+        return df
+
+    @staticmethod
+    def calc_scores(df_redcap:pd.DataFrame, measure_param:dict) -> pd.DataFrame:
         ''' Calculates the sum of scores for columns in 'col_items' and adds the
             sum score to 'col_score' row of the input dataframe.
             Designed to work with wide format REDCap dfs.
@@ -205,40 +301,56 @@ class DataWrangl():
                 - df_redcap (pd.DataFrame): REDCap df with col_score added
         '''
 
+        col_complete = measure_param['col_complete']
+        col_items = measure_param['col_items']
+        col_score = measure_param['col_score']
+
         assert isinstance(df_redcap, pd.DataFrame)
         assert isinstance(col_items, list)
         assert all([col_item in df_redcap.columns for col_item in col_items])
         assert isinstance(col_score, str)
         assert col_complete in df_redcap.columns
 
-        # Check if summed columns do not have missing data
-        ridx_missingitems = []
-        for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
-            for col in col_items:
-                if (eval(f'row.{col}') is None) or (math.isnan(eval(f'row.{col}'))):
-                    ridx_missingitems.append(row.Index)
+        #if measure_param['measure']=='WCS_others':
+        #    import pdb; pdb.set_trace()
+        #    df_redcap.loc[(df_redcap[col_complete]==2), ['pID', 'tp']+measure_param['col_items']]
 
-        if ridx_missingitems!=[]:
-            ridx_missingitems = [ridx for ridx in set(ridx_missingitems)]
-            print(f"\nMissing items from sum score calculation at row index (will skip rows from sum scores): {ridx_missingitems} \
-                \n\tFirst summed column: {col_items[0]}")
+        ### Reverse items if there is any
+        if 'reverse_items' in measure_param:
+            assert all([limit in measure_param for limit in ['min_score', 'max_score']])
+            original_scores = df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
+            reverse_scores = (measure_param['max_score'] + measure_param['min_score']) - df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
+            df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']] = reverse_scores
 
-        # Sum scores
+        ### Calculate sum scores
         df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
-        df_redcap.loc[ridx_missingitems, col_score] = math.nan
 
-        # Normalize sum scores if needed
-        if normalize!={}:
-            if normalize['normalize']=='by_nitems':
-                norm_factor = len(col_items)
-            elif normalize['normalize']=='by_maxscore':
-                norm_factor = len(col_items)*normalize['max_item_score']
-            else:
-                assert False
+        ### Reverse reverse-items back to original as the column may get processed again in different contexts
+        if 'reverse_items' in measure_param:
+            df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']] = original_scores
 
-            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = round(df_redcap.loc[(df_redcap[col_complete]==2), col_score]/norm_factor, 3)
+        ### Normalize sum scores
+        if 'norm_factor' in measure_param:
+            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = \
+            df_redcap.loc[(df_redcap[col_complete]==2), col_score]/measure_param['norm_factor']
 
-        return df_redcap
+        ### Check missing items
+        rows_df_missingitems = []
+        for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
+
+            cols_missing=[]
+            for col in col_items:
+                assert (eval(f'row.{col}') is not None)
+                if (math.isnan(eval(f'row.{col}'))):
+                    cols_missing.append(col)
+
+            if cols_missing!=[]:
+                rows_df_missingitems.append([row.pID, row.tp, measure_param['measure'], cols_missing])
+                df_redcap.loc[row.Index, col_score] = math.nan
+
+        ### Return
+        df_missingitems = pd.DataFrame(columns=['pID', 'tp', 'measure', 'missing_items'], data=rows_df_missingitems)
+        return df_redcap, df_missingitems
 
     @staticmethod
     def add_delta_scores(df_master:pd.DataFrame, delta_from_tp:str='bsl', delta_from_time:int=0) -> pd.DataFrame:
@@ -305,44 +417,6 @@ class DataWrangl():
 
         return df_master
 
-    @staticmethod
-    def widen_master(df_master:pd.DataFrame, xvars:list[str], x_tp:str, x_use_delta:bool, yvars:list[str], y_tp:str, y_use_delta:bool) -> pd.DataFrame:
-        ''' Convert long-form master df to wide-format df
-
-            Args:
-                - df_master(pd.DataFrame): master df of the trial
-                - xvars(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
-                - x_tp(str): use scores from what timepoint for measures in the xvars list
-                - x_use_delta(bool): use delta_score/score in the measure's column for measures in the xvars list
-                - yvars(list[str]): list of measures, i.e. one set of column headers in the resulting wide-format df
-                - y_tp(str): use scores from what timepoint for measures in the yvars list
-                - y_use_delta(bool): use delta_score/score in the measure's column for measures in the xvars list
-
-            Return:
-                - df(pd.DataFrame): wide-format data frame
-        '''
-
-        assert isinstance(df_master, pd.DataFrame)
-        for axis in ['x', 'y']:
-            assert isinstance(eval(f'{axis}vars'), list)
-            assert sum([isinstance(measure, str) for measure in eval(f'{axis}vars')])
-            assert isinstance(eval(f'{axis}_tp'), str)
-
-        df = df_master.loc[
-            ((df_master.tp==x_tp) & (df_master.measure.isin(xvars))) |
-            ((df_master.tp==y_tp) & (df_master.measure.isin(yvars)))]
-
-        if x_use_delta:
-            df.loc[(df.tp==x_tp) & (df.measure.isin(xvars)), 'score'] = df.loc[(df.tp==x_tp) & (df.measure.isin(xvars)), 'delta_score']
-
-        if y_use_delta:
-            df.loc[(df.tp==y_tp) & (df.measure.isin(yvars)), 'score'] = df.loc[(df.tp==y_tp) & (df.measure.isin(yvars)), 'delta_score']
-
-        df = pd.pivot_table(df, index=['pID',], columns='measure', values='score', dropna=False)
-        df.reset_index(inplace=True)
-
-        return df
-
 
 class Analysis():
     ''' Functions for data analysis '''
@@ -391,66 +465,7 @@ class Analysis():
         return df_observed
 
     @staticmethod
-    def get_df_tp_ndays(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
-        """ Calculates the average number of days for each timepoint since baseline.
-            This data is usefull when determining spacing between timepoints on various graphs
-
-            Args:
-                - df_redcap: raw REDCAP export df
-                - save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
-
-            Returns:
-                - df_tp_ndays: dataframe of timepoints and the avg days since baseline
-        """
-
-        ### Clean REDCap df
-        df = df_redcap.rename(columns={'vrecord_date': 'date',})
-        df = df.loc[(df.study_visit_completion_record_complete==2)]
-        df = df[['pID', 'tp', 'date']]
-        df = df.dropna()
-        df.date = pd.to_datetime(df.date)
-        df.reset_index(drop=True, inplace=True)
-        cidx_date = df.columns.get_loc('date')
-
-        ### Prep outpur
-        df_tp_ndays_rows = []
-        df_tp_ndays_rows.append(['bsl', 0, math.nan])
-
-        ### Iterate through all patients / tps
-        for tp in df.tp.unique():
-
-            if tp=='bsl':
-                continue
-            ndays=[]
-
-            for pID in df.pID.unique():
-                row_bsl = df.loc[(df.pID==pID) & (df.tp=='bsl')]
-                row_tp = df.loc[(df.pID==pID) & (df.tp==tp)]
-
-                # calculate tp-bsl in days
-                # ignore if there is not exactly 1 row for either tp or bsl
-                if (row_bsl.shape[0]==1) & (row_tp.shape[0]==1):
-                    ndays.append(
-                        (df.iloc[row_tp.index[0], cidx_date] - df.iloc[row_bsl.index[0], cidx_date]).days)
-
-            ### Create row with avg number of days between baseline and tp
-            df_tp_ndays_rows.append([
-                tp,
-                round(np.array(ndays).mean()),
-                len(ndays)])
-
-        ### Convert list of rows to df
-        df_tp_ndays = pd.DataFrame(columns=['tp', 'ndays', 'n'], data=df_tp_ndays_rows)
-        df_tp_ndays.sort_values(by='ndays', inplace=True)
-
-        ### Save if needed, return output
-        if save!={}:
-            df_tp_ndays.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
-
-        return df_tp_ndays
-
-    @staticmethod
-    def get_corrmats(df:pd.DataFrame, xvars:list[str], yvars:list[str], methods:list[str]=commons_config.corr_methods, save:bool=True, **kwargs):
+    def get_corrmats(df:pd.DataFrame, xvars:list[str], yvars:list[str], methods:list[str]=commons_config.corr_methods, **kwargs):
         """ Calculates and corr coeffs and associated p-values between all pairs of xvars and yvars
             Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
 
@@ -492,29 +507,28 @@ class Analysis():
                 df_coeffs.at[var2, var1] = round(result_corr.statistic, 3)
                 df_pvalues.at[var2, var1] = round(result_corr.pvalue, 3)
 
+            ### Clean up & save/visualize
             # Convert to numeric
             df_coeffs = df_coeffs.astype('float64')
             df_pvalues = df_pvalues.astype('float64')
 
             # Save results if needed
-            if save:
+            if (('dir_out' in kwargs) and ('fname_out' in kwargs)):
                 df_coeffs.to_csv(os.path.join(kwargs['dir_out'], f'{kwargs['fname_out']}_{method}_coeffs.csv'))
                 df_pvalues.to_csv(os.path.join(kwargs['dir_out'], f'{kwargs['fname_out']}_{method}_pvalues.csv'))
 
-                title = f'{kwargs['title']}' if 'title' in kwargs else f'{method.upper()} correlation (n={df_pair.shape[0]})'
-                xlabel = kwargs['xlabel'] if 'xlabel' in kwargs else None
-                ylabel = kwargs['ylabel'] if 'ylabel' in kwargs else None
+            # Draw correlation unless draw is explicitly False
+            if ('draw' in kwargs):
+                if (kwargs['draw'] is False):
+                    return df_coeffs, df_pvalues
 
-                Plots.draw_corrmat(
-                    df_coeffs = df_coeffs,
-                    df_pvalues = df_pvalues,
-                    title = title,
-                    xlabel = xlabel,
-                    ylabel = ylabel,
-                    dir_out = kwargs['dir_out'],
-                    fname_out = f'{kwargs['fname_out']}_{method}',)
+            kwargs['corr_info'] = f'{method.upper()} correlation (n={df_pair.shape[0]})'
+            kwargs['method'] = method
 
-        return df_coeffs, df_pvalues
+            Plots.draw_corrmat(
+                df_coeffs=df_coeffs,
+                df_pvalues=df_pvalues,
+                **kwargs,)
 
 
 class Plots():
@@ -546,7 +560,7 @@ class Plots():
             patch.set_facecolor((r, g, b, alpha))
 
     @staticmethod
-    def draw_corrmat(df_coeffs, df_pvalues, save:bool=True, **kwargs):
+    def draw_corrmat(df_coeffs, df_pvalues, **kwargs):
         ''' Draws correlation matrix heatmap using outputs of get_corrmat()
 
             Args:
@@ -559,7 +573,6 @@ class Plots():
 
         assert isinstance(df_coeffs, pd.DataFrame)
         assert isinstance(df_pvalues, pd.DataFrame)
-        assert isinstance(save, bool)
 
         fig, ax = plt.subplots(dpi=300)
 
@@ -573,10 +586,16 @@ class Plots():
             cmap = 'vlag',
             fmt = '')
 
-        plt.xticks(rotation=45)
+        if 'rotation' in kwargs:
+            rotation = kwargs['rotation']
+        else:
+            rotation = 45
+        plt.xticks(rotation=rotation)
 
         if 'title' in kwargs:
             ax.set_title(kwargs['title'], fontdict=commons_config.title_fontdict)
+        else:
+            ax.set_title(kwargs['corr_info'], fontdict=commons_config.title_fontdict)
 
         if 'xlabel' in kwargs:
             ax.set_xlabel(kwargs['xlabel'], fontdict=commons_config.axislabel_fontdict)
@@ -584,7 +603,11 @@ class Plots():
         if 'ylabel' in kwargs:
             ax.set_ylabel(kwargs['ylabel'], fontdict=commons_config.axislabel_fontdict)
 
-        if save:
+        if (('dir_out' in kwargs) and ('fname_out' in kwargs)):
+
+            if 'method' in kwargs:
+                kwargs['fname_out'] = kwargs['fname_out']+f'_{kwargs['method']}'
+
             Plots.save_fig(
                 fig = fig,
                 dir_out  = kwargs['dir_out'],
@@ -703,32 +726,31 @@ class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
     @staticmethod
-    def check_masterDf(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:
+    def check_master(df_master:pd.DataFrame, trial:str, folder_exports:str, measure_types:list[str]=commons_config.measure_types) -> None:
         ''' Check if df_master meets all assumptions '''
 
-        CheckDf.check_duplicate_rows(df_master)
-        CheckDf.check_baseline_condition(df_master)
+        CheckDf.check_duplicates(df_master, trial, folder_exports)
+        CheckDf.check_conditions(df_master)
         CheckDf.check_indose_time(df_master)
-        CheckDf.check_score_delta_score(df_master)
+        CheckDf.check_delta_scores(df_master, trial, folder_exports)
         CheckDf.check_measure_types(df_master, measure_types)
 
     @staticmethod
-    def check_duplicate_rows(df_master:pd.DataFrame, cols=commons_config.cols_checkduplicates) -> None:
+    def check_duplicates(df_master:pd.DataFrame, trial:str, folder_exports:str, cols=commons_config.cols_checkduplicates) -> None:
         ''' Check if there are duplicate rows '''
 
         df_master = df_master[cols]
-        duplicate_rows = df_master[df_master.duplicated(keep=False)]
-        if duplicate_rows.shape[0]!=0:
-            print(f'There are {duplicate_rows.shape[0]} duplicate rows across {cols}.')
-            print(duplicate_rows)
+        duplicates = df_master[df_master.duplicated(keep=False)]
+        if duplicates.shape[0]!=0:
+            print(f'Duplicate rows, see exports/{trial}_duplicates.csv.')
+            duplicates.to_csv(os.path.join(folder_exports, f'{trial}_duplicates.csv'), index=False)
 
     @staticmethod
-    def check_baseline_condition(df_master:pd.DataFrame) -> None:
+    def check_conditions(df_master:pd.DataFrame, tps_wo_condition=['bsl', 'ltfu']) -> None:
         ''' Check if there is a condition for every tp except baseline '''
 
-        assert isinstance(df_master, pd.DataFrame)
-        assert all([condition in [None, ''] for condition in df_master.loc[(df_master.tp=='bsl')].condition])
-        assert all([isinstance(condition, str) for condition in df_master.loc[(df_master.tp!='bsl')].condition])
+        assert all([condition in [None, ''] for condition in df_master.loc[(df_master.tp.isin(tps_wo_condition))].condition])
+        assert all([isinstance(condition, str) for condition in df_master.loc[(~df_master.tp.isin(tps_wo_condition))].condition])
 
     @staticmethod
     def check_indose_time(df_master:pd.DataFrame) -> None:
@@ -740,21 +762,26 @@ class CheckDf():
         assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
     @staticmethod
-    def check_score_delta_score(df_master:pd.DataFrame) -> None:
+    def check_delta_scores(df_master:pd.DataFrame, trial:str, folder_exports:str,) -> None:
         ''' Throws error if there is a delta_score for measures with meaure_type=post_dose and for all measures at baseline.
         '''
-        assert isinstance(df_master, pd.DataFrame)
+
+        ### Check all are float
         assert all([((isinstance(score, float)) or (isinstance(score, int))) for score in df_master.score])
         assert all([((isinstance(delta_score, float)) or (isinstance(delta_score, int))) for delta_score in df_master.delta_score])
 
-        # There should be no delta_score for post_dose measures and at baseline
-        assert all([math.isnan(delta_score) for delta_score in df_master.loc[(df_master.measure_type=='post_dose')].delta_score])
+        ### There should be no delta_score for measure types 'post_dose', 'post_trt'
+        assert all([math.isnan(delta_score) for delta_score in \
+            df_master.loc[df_master.measure_type.isin(['post_dose', 'post_trt'])].delta_score])
+
+        ### Delta core should be 0 at bsl
         assert all([delta_score==0 for delta_score in df_master.loc[(df_master.tp=='bsl')].delta_score])
 
-        missing_baselines = df_master.loc[(df_master.measure_type=='change') & pd.isna(df_master.delta_score)]
-        if missing_baselines.shape[0]!=0:
-            print("\nMissing delta_scores for following 'change' instruments (baseline missing?):")
-            print(missing_baselines)
+        ### Missing delta scores
+        missing_deltas = df_master.loc[(df_master.measure_type=='change') & pd.isna(df_master.delta_score)]
+        if missing_deltas.shape[0]!=0:
+            print(f'Missing delta_scores, see exports/{trial}_missing_deltas.csv.')
+            missing_deltas.to_csv(os.path.join(folder_exports, f'{trial}_missing_deltas.csv'), index=False)
 
     @staticmethod
     def check_measure_types(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:
@@ -800,22 +827,22 @@ class Helpers():
         '''
 
         # Check if all rows of time is NaN / non-NaN
-        is_all_not_nan = False
+        is_all_number = False
         is_all_nan = False
 
         if all([math.isnan(time) for time in df.loc[(df.measure==measure)].time]):
             is_all_nan = True
         if all([not math.isnan(time) for time in df.loc[(df.measure==measure)].time]):
-            is_all_not_nan = True
+            is_all_number = True
 
         # Decide if measure has time
-        if (is_all_nan is True) and (is_all_not_nan is True):
+        if (is_all_nan is True) and (is_all_number is True):
             raise UndecidedHasTime(measure)
-        elif (is_all_nan is False) and (is_all_not_nan is True):
+        elif (is_all_nan is False) and (is_all_number is True):
             has_time = True
-        elif (is_all_nan is True) and (is_all_not_nan is False):
+        elif (is_all_nan is True) and (is_all_number is False):
             has_time = False
-        elif (is_all_nan is False) and (is_all_not_nan is False):
+        elif (is_all_nan is False) and (is_all_number is False):
             raise UndecidedHasTime(measure)
         else:
             assert False
@@ -828,7 +855,7 @@ class UndecidedHasTime(Exception):
         self.measure = measure
         super().__init__(self.measure)
 
-class MissingItemsFromSumScore(Exception):
+class IncompleteScore(Exception):
     def __init__(self, msg, df_exception):
         self.msg = msg
         self.df_exception = df_exception

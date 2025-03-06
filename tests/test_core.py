@@ -199,54 +199,54 @@ class GetDfVitalsTests(DataWranglTests):
 
 class AddSumScoresTests(DataWranglTests):
 
-    def test_case0_add_sum_scores(self):
+    def test_case0_calc_scores(self):
         ''' Case of not summing anything '''
 
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
             col_items = [],
             col_score = 'tadaa',
             col_complete = 'ebi_complete')
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case0.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case0.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_case1_add_sum_scores(self):
+    def test_case1_calc_scores(self):
         ''' Intended case '''
 
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
             col_complete = 'ebi_complete')
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case1.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case1.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_case2_add_sum_scores(self):
+    def test_case2_calc_scores(self):
         ''' Test normalization '''
 
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
             col_complete = 'ebi_complete')
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case2.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case2.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
@@ -255,7 +255,7 @@ class AddSumScoresTests(DataWranglTests):
 
         ### Normalize by_nitems case
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
@@ -263,7 +263,7 @@ class AddSumScoresTests(DataWranglTests):
             normalize = 'by_nitems',)
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case21.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case21.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
@@ -272,7 +272,7 @@ class AddSumScoresTests(DataWranglTests):
 
         ### Normalize by_maxscore case
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
@@ -281,7 +281,7 @@ class AddSumScoresTests(DataWranglTests):
             max_item_score = 5,)
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case22.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case22.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
@@ -290,7 +290,7 @@ class AddSumScoresTests(DataWranglTests):
 
         ### Normalize by_maxscore case; change max value
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
@@ -299,14 +299,14 @@ class AddSumScoresTests(DataWranglTests):
             max_item_score = 2,)
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case23.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case23.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_case3_add_sum_scores(self):
+    def test_case3_calc_scores(self):
         ''' Missing data case. Should also produce print (use "python -m pytest -s .\tests\" to see in terminal):
                 "Missing items from sum score calculation at row index (will skip rows from sum scores): [0, 1]"
         '''
@@ -317,14 +317,14 @@ class AddSumScoresTests(DataWranglTests):
         df_redcap.iloc[1, 3] = None
 
         # Calculate
-        df = core.DataWrangl.add_sum_scores(
+        df = core.DataWrangl.calc_scores(
             df_redcap = df_redcap,
             col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
             col_score = 'tadaa',
             col_complete = 'ebi_complete')
 
         # Get manual solution
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_add_sum_scores_case3.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case3.csv'))
 
         # Compare
         df_solution.reset_index(drop=True, inplace=True)
