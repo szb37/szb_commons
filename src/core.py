@@ -311,10 +311,6 @@ class DataWrangl():
         assert isinstance(col_score, str)
         assert col_complete in df_redcap.columns
 
-        #if measure_param['measure']=='WCS_others':
-        #    import pdb; pdb.set_trace()
-        #    df_redcap.loc[(df_redcap[col_complete]==2), ['pID', 'tp']+measure_param['col_items']]
-
         ### Reverse items if there is any
         if 'reverse_items' in measure_param:
             assert all([limit in measure_param for limit in ['min_score', 'max_score']])
