@@ -202,17 +202,15 @@ class AddSumScoresTests(DataWranglTests):
     def test_case0_calc_scores(self):
         ''' Case of not summing anything '''
 
-        # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
-            col_items = [],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete')
+            measure_param = {
+                'col_items': [],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete'})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case0.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
@@ -221,16 +219,15 @@ class AddSumScoresTests(DataWranglTests):
         ''' Intended case '''
 
         # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
-            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete')
+            measure_param = {
+                'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete',})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case1.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
@@ -239,69 +236,68 @@ class AddSumScoresTests(DataWranglTests):
         ''' Test normalization '''
 
         # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
-            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete')
+            measure_param = {
+                'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete',})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case2.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
         ### Normalize by_nitems case
         # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
-            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete',
-            normalize = 'by_nitems',)
+            measure_param = {
+                'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete',
+                'norm_factor': 6,})
+                #'normalize': 'by_nitems',})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case21.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
         ### Normalize by_maxscore case
         # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
-            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete',
-            normalize = 'by_maxscore',
-            max_item_score = 5,)
+            measure_param = {
+                'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete',
+                'norm_factor': 6*5,})
+                #'normalize': 'by_maxscore',
+                #'max_item_score': 5,},)
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case22.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
         ### Normalize by_maxscore case; change max value
         # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
-            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete',
-            normalize = 'by_maxscore',
-            max_item_score = 2,)
+            measure_param = {
+                'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete',
+                'norm_factor': 6*2,})
+                #'normalize': 'by_maxscore',
+                #'max_item_score': 2,})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case23.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
@@ -317,19 +313,20 @@ class AddSumScoresTests(DataWranglTests):
         df_redcap.iloc[1, 3] = None
 
         # Calculate
-        df = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_scores(
             df_redcap = df_redcap,
-            col_items = ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
-            col_score = 'tadaa',
-            col_complete = 'ebi_complete')
+            measure_param = {
+                'measure': 'mock_measure',
+                'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
+                'col_score': 'tadaa',
+                'col_complete': 'ebi_complete',})
 
-        # Get manual solution
+        # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case3.csv'))
-
-        # Compare
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
+
 
 class AddDeltaScoresTests(DataWranglTests):
 
@@ -384,6 +381,7 @@ class AddDeltaScoresTests(DataWranglTests):
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
+
 
 class WidenMasterTests(DataWranglTests):
 
@@ -466,6 +464,7 @@ class WidenMasterTests(DataWranglTests):
 class AnalysisTests(unittest.TestCase):
     pass
 
+
 class GetDfObservedTests(AnalysisTests):
 
     def test_case0_get_df_observed(self):
@@ -492,13 +491,17 @@ class GetDfObservedTests(AnalysisTests):
         # Compare
         assert df_solution.equals(df)
 
+
 class GetDfTpNdaysTests(AnalysisTests):
 
     def test_case0_get_df_tp_ndays(self):
 
+        #import pdb; pdb.set_trace()
+
         # Calculate
-        df = core.Analysis.get_df_tp_ndays(
-            df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_wdates_case0.csv')),)
+        df = core.DataWrangl.get_df_tp_ndays(
+            df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_wdates_case0.csv')),
+            col_date = 'date')
         df.reset_index(drop=True, inplace=True)
 
         # Get manual solution & compare
@@ -508,13 +511,15 @@ class GetDfTpNdaysTests(AnalysisTests):
     def test_case1_get_df_tp_ndays(self):
 
         # Calculate
-        df = core.Analysis.get_df_tp_ndays(
-            df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_wdates_case1.csv')),)
+        df = core.DataWrangl.get_df_tp_ndays(
+            df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_wdates_case1.csv')),
+            col_date = 'date')
         df.reset_index(drop=True, inplace=True)
 
         # Get manual solution & compare
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_ get_df_tp_ndays_case1.csv'))
         assert df_solution.equals(df)
+
 
 class GetCorrmatTests(AnalysisTests):
 
@@ -538,8 +543,9 @@ class GetCorrmatTests(AnalysisTests):
             df = df,
             xvars = vars_bsl,
             yvars = vars_outcome,
-            save = False,
-            methods = ['pearson',],)
+            methods = ['pearson',],
+            draw = False)
+
         df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_pearson_coeffs.csv'), index_col=0)
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_pearson_pvalues.csv'), index_col=0)
         assert df_solution_coeffs.equals(df_coeffs)
@@ -550,7 +556,7 @@ class GetCorrmatTests(AnalysisTests):
             df = df,
             xvars = vars_bsl,
             yvars = vars_outcome,
-            save = False,
+            draw = False,
             methods = ['spearman',],)
         df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_spearman_coeffs.csv'), index_col=0)
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_spearman_pvalues.csv'), index_col=0)
@@ -562,7 +568,7 @@ class GetCorrmatTests(AnalysisTests):
             df = df,
             xvars = vars_bsl,
             yvars = vars_outcome,
-            save = False,
+            draw = False,
             methods = ['kendall',],)
         df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_kendall_coeffs.csv'), index_col=0)
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_baseline]_kendall_pvalues.csv'), index_col=0)
@@ -589,7 +595,7 @@ class GetCorrmatTests(AnalysisTests):
             df = df,
             xvars = vars_session,
             yvars = vars_outcome,
-            save = False,
+            draw = False,
             methods = ['pearson',],)
         df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_pearson_coeffs.csv'), index_col=0)
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_pearson_pvalues.csv'), index_col=0)
@@ -601,7 +607,7 @@ class GetCorrmatTests(AnalysisTests):
             df = df,
             xvars = vars_session,
             yvars = vars_outcome,
-            save = False,
+            draw = False,
             methods = ['spearman',],)
         df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_spearman_coeffs.csv'), index_col=0)
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_spearman_pvalues.csv'), index_col=0)
@@ -613,7 +619,7 @@ class GetCorrmatTests(AnalysisTests):
             df = df,
             xvars = vars_session,
             yvars = vars_outcome,
-            save = False,
+            draw = False,
             methods = ['kendall',],)
         df_solution_coeffs = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_kendall_coeffs.csv'), index_col=0)
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_kendall_pvalues.csv'), index_col=0)

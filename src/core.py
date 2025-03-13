@@ -477,7 +477,7 @@ class Analysis():
                 df_coeffs (pd.DataFrame): dataframe of correlation coefficients
                 df_pvalues (pd.DataFrame): dataframe of correlation p-values
         """
-
+        
         assert isinstance(df, pd.DataFrame)
         for axis in ['x','y']:
             assert isinstance(eval(f'{axis}vars'), list)
