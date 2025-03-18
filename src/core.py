@@ -20,7 +20,7 @@ class DataWrangl():
     @staticmethod
     def get_df_measure(df_redcap:pd.DataFrame, measure_param:dict, cols_to_keep:list[str]=commons_config.cols_to_keep, **save)-> pd.DataFrame:
         ''' Returns all completed scores of a given measure in long-formatted df.
-            Rows that have missing value in either pID/tp/score columns are removed.
+            Rows are removed that have missing value in any of the pID/tp/score columns.
 
             Args:
                 - df_redcap: raw export from REDCap
@@ -79,16 +79,19 @@ class DataWrangl():
 
     @staticmethod
     def get_df_tp_ndays(df_redcap:pd.DataFrame, col_date:str, **save) -> pd.DataFrame:
-        """ Calculates the average number of days for each timepoint since baseline.
-            This data is usefull when determining spacing between timepoints on various graphs
+        ''' Get df of the average number of days since baseline for each timepoint.
 
             Args:
-                - df_redcap: raw REDCAP export df
+                - df_redcap (pd.DataFrame): raw REDCap export df
+                - col_date (str): column of dates in REDCap df
                 - save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
 
             Returns:
-                - df_tp_ndays: dataframe of timepoints and the avg days since baseline
-        """
+                - df_tp_ndays: df of avg days since baseline (to a given tp)
+        '''
+
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(col_date, str)
 
         df = df_redcap.rename(columns={col_date: 'date',})
         df = df.loc[(df.study_visit_completion_record_complete==2)]
@@ -136,8 +139,37 @@ class DataWrangl():
         return df_tp_ndays
 
     @staticmethod
+    def get_df_dosedates(df_redcap, col_date, dose_tps=['A0', 'B0', 'C0', 'D0',], **save):
+        ''' Get df of when each dose was administered
+            Args:
+                - df_redcap (pd.DataFram): REDCAP export
+                - col_date (str): column of dates in REDCap df
+                - dose_tps (list): list of timepoints to include in result
+
+            Returns:
+                - df_dosedates (pd.DataFrame): df of date-dose pairs
+        '''
+
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(col_date, str)
+
+        df_dosedates = df_redcap.loc[(df_redcap.tp.isin(dose_tps))]
+        df_dosedates = df_dosedates.rename(columns={col_date: 'my_date',})
+        df_dosedates = df_dosedates[['pID', 'tp', 'my_date']]
+        df_dosedates = df_dosedates.dropna()
+        df_dosedates = df_dosedates.drop_duplicates()
+        df_dosedates['my_date'] = pd.to_datetime(df_dosedates['my_date'])
+        df_dosedates = df_dosedates.rename(columns={'my_date': 'date',})
+        df_dosedates = df_dosedates.reset_index(drop=True)
+
+        if save!={}:
+            df_dosedates.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df_dosedates
+
+    @staticmethod
     def format_bsl_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
-        """ Deal with inconcistsent naming convention between baseline and post-baseline measures
+        ''' Deal with inconcistsent naming convention between baseline and post-baseline vitals measures.
             Need to call this before get_df_vitals().
 
             Args:
@@ -146,7 +178,7 @@ class DataWrangl():
 
             Returns:
                 - df_vitals (pd.DataFrame): long-form dataframe of vitals data
-        """
+        '''
 
         assert isinstance(df_redcap, pd.DataFrame)
 
@@ -174,8 +206,8 @@ class DataWrangl():
 
     @staticmethod
     def get_df_vitals(df_redcap:pd.DataFrame, measure_param:dict, **save) -> pd.DataFrame:
-        """ Special case of get_df_measure() to deal with the idiosyncrasies of vitals measures.
-            Speifically, there is either 1 or 2 readings of vitals.
+        ''' Special case of get_df_measure() to deal with the idiosyncrasies of vitals measures.
+            Specifically, there is either 1 or 2 readings of vitals.
             If there are 2 readings, then the avg is propagated to the output.
 
             Args:
@@ -190,7 +222,7 @@ class DataWrangl():
 
             Returns:
                 - df_vitals (pd.DataFrame): long-form dataframe of vitals data
-        """
+        '''
 
         assert isinstance(df_redcap, pd.DataFrame)
         assert isinstance(measure_param, dict)
@@ -248,7 +280,7 @@ class DataWrangl():
 
     @staticmethod
     def widen_master(df_master:pd.DataFrame, xvars:list[str], x_tp:str, x_use_delta:bool, yvars:list[str], y_tp:str, y_use_delta:bool) -> pd.DataFrame:
-        ''' Convert long-form master df to wide-format df
+        ''' Convert long-form master df to wide-format df for correlation analysis
 
             Args:
                 - df_master(pd.DataFrame): master df of the trial
@@ -286,19 +318,19 @@ class DataWrangl():
 
     @staticmethod
     def calc_scores(df_redcap:pd.DataFrame, measure_param:dict) -> pd.DataFrame:
-        ''' Calculates the sum of scores for columns in 'col_items' and adds the
-            sum score to 'col_score' row of the input dataframe.
-            Designed to work with wide format REDCap dfs.
+        ''' Calculates the scores for measures defined by measure_param, see config for formatting.
 
             Args:
                 - df_redcap (pd.DataFrame): raw export from REDCap
-                - col_items (list of strs): list of columns that are summed
-                - col_complete (str): name of column that defined whether row is complete
-                - col_score (str): name of column where the sum scores are added
-                - normalize (dict; optional): dictionary defining how to normalize the calculated sum scores
+                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
+                        - 'instrument': value of the "instrument" column in the returned df;
+                        - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
+                        - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
+                        - 'col_score': column name in df_redcap, which stores score
+                        - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
 
             Returns:
-                - df_redcap (pd.DataFrame): REDCap df with col_score added
+                - df_redcap (pd.DataFrame): REDCap df with scores added
         '''
 
         col_complete = measure_param['col_complete']
@@ -315,13 +347,15 @@ class DataWrangl():
         if 'reverse_items' in measure_param:
             assert all([limit in measure_param for limit in ['min_score', 'max_score']])
             original_scores = df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
-            reverse_scores = (measure_param['max_score'] + measure_param['min_score']) - df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
+            reverse_scores = \
+                (measure_param['max_score'] + measure_param['min_score']) - \
+                df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
             df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']] = reverse_scores
 
         ### Calculate sum scores
         df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
 
-        ### Reverse reverse-items back to original as the column may get processed again in different contexts
+        ### Reverse back reverse-items back to original as the column may get processed again in different contexts
         if 'reverse_items' in measure_param:
             df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']] = original_scores
 
@@ -353,7 +387,7 @@ class DataWrangl():
         ''' For every pID, tp, measure triplet add delta_score from timepoint defined by delta_from_tp if the row's measure has no time (i.e. all rows have time=nan)
             For every pID, tp, measure triplet add delta_score from the time defined by delta_from_time at the given timepoint if the row's measure has time (i.e. all rows have a non-nan time)
 
-            WARNING: not optimized, may take a few mins with larger dfs
+            TODO: optimize, right now its brute force. May take some time for larger dfs
 
             Args:
                 - df (pd.DataFrame): longform df of trial data
@@ -419,7 +453,7 @@ class Analysis():
 
     @staticmethod
     def get_df_observed(df_master:pd.DataFrame, digits:int=3, **save) -> pd.DataFrame:
-        """ Creates a dataframe with the observed mean and SD of all measures at every tp.
+        ''' Creates a dataframe with the observed mean and SD of all measures at every tp.
             Missing data are ignored from the mean/sd calculations.
 
             Args:
@@ -429,7 +463,7 @@ class Analysis():
 
             Returns:
                 - df_observed: df of observed means and SDs at every tp
-        """
+        '''
 
         ### Initate output
         measures = df_master.measure.unique().tolist()
@@ -462,22 +496,21 @@ class Analysis():
 
     @staticmethod
     def get_corrmats(df:pd.DataFrame, xvars:list[str], yvars:list[str], methods:list[str]=commons_config.corr_methods, **kwargs):
-        """ Calculates and corr coeffs and associated p-values between all pairs of xvars and yvars
+        ''' Calculates and corr coeffs and associated p-values between all pairs of xvars and yvars
             Correlations are calculated with 'pearson', 'spearman' and 'kendall' methods
 
             Args:
-                df (pd.DataFrame): wide-format dataframe where all elements of xvars and yvars are columns
-                xvars (list of strs): variables for the x-axis of corr matrix
-                yvars (list of strs): variables for the y-axis of corr matrix
-                methods (list of strs): what correlation method to use; elements must be pearson/spearman/kendall
-                save (bool): save results?
-                kwargs (dict; optional): dictionary with keys to determine where output is saved, title, xlabel, ylabel
+                - df (pd.DataFrame): wide-format dataframe where all elements of xvars and yvars are columns
+                - xvars (list of strs): variables for the x-axis of corr matrix
+                - yvars (list of strs): variables for the y-axis of corr matrix
+                - methods (list of strs): what correlation method to use; elements must be pearson/spearman/kendall
+                - save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
 
             Returns:
-                df_coeffs (pd.DataFrame): dataframe of correlation coefficients
-                df_pvalues (pd.DataFrame): dataframe of correlation p-values
-        """
-        
+                - df_coeffs (pd.DataFrame): dataframe of correlation coefficients
+                -df_pvalues (pd.DataFrame): dataframe of correlation p-values
+        '''
+
         assert isinstance(df, pd.DataFrame)
         for axis in ['x','y']:
             assert isinstance(eval(f'{axis}vars'), list)
@@ -526,6 +559,45 @@ class Analysis():
                 df_pvalues=df_pvalues,
                 **kwargs,)
 
+    @staticmethod
+    def get_missing_scores(df_master, measure_params, **save):
+        ''' Get df of missing scores
+        Args:
+            - df_master (pd.DataFrame): long-form master df
+            - measure_params (list of dict): list of measure parameters, see config.py for format
+            - save (optional, dict): where to save results if want to
+
+        Returns:
+            - df_res (pd.DataFrame): df of missing scores
+        '''
+
+        df_res = pd.DataFrame(columns=['pID', 'tp', 'measure',])
+
+        for measure_param in measure_params:
+
+            if 'tps' not in measure_param.keys():
+                print(f'tps are not defined for {measure_param['measure']}; cannot find missing measurs.')
+                continue
+
+            for pID, tp in itertools.product(df_master.pID.unique(), measure_param['tps']):
+                score = df_master.loc[(df_master.pID==pID) & (df_master.tp==tp) & (df_master.measure==measure_param['measure'])].score
+                nrows = df_master.loc[(df_master.pID==pID) & (df_master.tp==tp) & (df_master.measure==measure_param['measure'])].shape[0]
+
+                if (nrows==1) and (not math.isnan(score)):
+                    continue
+
+                df_res.loc[df_res.shape[0]] = {
+                	'pID': pID,
+                	'tp': tp,
+                	'measure': measure_param['measure'],}
+
+        if save!={}:
+            df_res.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+            if df_res.shape[0] > 0:
+                print(f'Some measures are missing, see {save['fname_out']} for details.')
+
+        return df_res
+
 
 class Plots():
     ''' Functions to help with figures '''
@@ -562,9 +634,7 @@ class Plots():
             Args:
                 df_coeffs (pd.DataFrame): dataframe of correlation coefficients
                 df_pvalues (pd.DataFrame): dataframe of correlation p-values
-                dir_out (str): where to save fig
-                fname_out (str): name of file saves
-                save (bool): should image be save
+                kwargs (dict, optional): optinal info to format & save fig
         '''
 
         assert isinstance(df_coeffs, pd.DataFrame)
@@ -612,14 +682,15 @@ class Plots():
                 save_SVG = commons_config.save_SVG,)
 
     @staticmethod
-    def draw_vitals(df_master, dir_out, prefix_out, save=True, measures=['dia', 'sys', 'hr'], **kwargs):
-        """ Draw in-dosing-session trajectory of vitals
+    def draw_vitals(df_master, measures=['dia', 'sys', 'hr'], **save):
+        ''' Draw in-dosing-session trajectory of vitals
+
             Args:
                 df_master (pd.DataFrame): long-form master df
                 measures (list): list of vitals;
                 dir_out (str): where to save results
                 save (bool): save figure?
-        """
+        '''
 
         assert isinstance(df_master, pd.DataFrame)
         assert isinstance(dir_out, str)
@@ -640,16 +711,12 @@ class Plots():
                 hue = 'condition',
                 markersize = 10,
                 legend = True,
-                #style = 'tp',
                 linewidth=2,
                 markers = [
                     "o", "D"],
                 palette = {
-                    #'A0': '#56A0FB',
-                    #'B0': '#F71480'},
                     'C': '#56A0FB',
                     'T': '#F71480'},
-                errorbar = "ci",
                 err_style = "bars",
                 err_kws={
                     'capsize': 4,
@@ -673,11 +740,11 @@ class Plots():
             ax.yaxis.grid(False)
             ax.xaxis.grid(False)
 
-            if save:
+            if save!={}:
                 Plots.save_fig(
                     fig = fig,
                     dir_out = dir_out,
-                    fname_out = f'{prefix_out}_{measure}',
+                    fname_out = f'{save['prefix_out']}_{measure}',
                     save_PNG=commons_config.savePNG,
                     save_SVG=commons_config.saveSVG)
 
@@ -728,7 +795,6 @@ class CheckDf():
         CheckDf.check_duplicates(df_master, trial, folder_exports)
         CheckDf.check_conditions(df_master)
         CheckDf.check_indose_time(df_master)
-        CheckDf.check_delta_scores(df_master, trial, folder_exports)
         CheckDf.check_measure_types(df_master, measure_types)
 
     @staticmethod
@@ -757,27 +823,6 @@ class CheckDf():
         assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
         assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
-    @staticmethod
-    def check_delta_scores(df_master:pd.DataFrame, trial:str, folder_exports:str,) -> None:
-        ''' Throws error if there is a delta_score for measures with meaure_type=post_dose and for all measures at baseline.
-        '''
-
-        ### Check all are float
-        assert all([((isinstance(score, float)) or (isinstance(score, int))) for score in df_master.score])
-        assert all([((isinstance(delta_score, float)) or (isinstance(delta_score, int))) for delta_score in df_master.delta_score])
-
-        ### There should be no delta_score for measure types 'post_dose', 'post_trt'
-        assert all([math.isnan(delta_score) for delta_score in \
-            df_master.loc[df_master.measure_type.isin(['post_dose', 'post_trt'])].delta_score])
-
-        ### Delta core should be 0 at bsl
-        assert all([delta_score==0 for delta_score in df_master.loc[(df_master.tp=='bsl')].delta_score])
-
-        ### Missing delta scores
-        missing_deltas = df_master.loc[(df_master.measure_type=='change') & pd.isna(df_master.delta_score)]
-        if missing_deltas.shape[0]!=0:
-            print(f'Missing delta_scores, see exports/{trial}_missing_deltas.csv.')
-            missing_deltas.to_csv(os.path.join(folder_exports, f'{trial}_missing_deltas.csv'), index=False)
 
     @staticmethod
     def check_measure_types(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:

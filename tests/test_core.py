@@ -7,7 +7,7 @@ Use decorator to skip a test temporarily:
 """
 
 import sys
-path_szb_commons = 'C://Users//szb37//My Drive//Efforts//szb_commons'
+path_szb_commons = 'C:/Users/szb37/My Drive/Work efforts/szb_commons/'
 sys.path.append(path_szb_commons)
 
 import src.core as core
@@ -23,6 +23,7 @@ import os
 
 class DataWranglTests(unittest.TestCase):
     pass
+
 
 class GetDfMeasureTests(DataWranglTests):
 
@@ -160,6 +161,7 @@ class GetDfMeasureTests(DataWranglTests):
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_get_df_measure_case7.csv'))
         assert df_solution.equals(df)
 
+
 class GetDfVitalsTests(DataWranglTests):
 
     def test_case0_get_df_vitals(self):
@@ -197,7 +199,8 @@ class GetDfVitalsTests(DataWranglTests):
             'df_solution_get_df_vitals_case2.csv'))
         assert df_solution.equals(df)
 
-class AddSumScoresTests(DataWranglTests):
+
+class CalcScoresTests(DataWranglTests):
 
     def test_case0_calc_scores(self):
         ''' Case of not summing anything '''
@@ -325,6 +328,127 @@ class AddSumScoresTests(DataWranglTests):
         df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case3.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
+        assert df_solution.equals(df)
+
+    ''' Test revserse scoring '''
+    def test_case4_calc_scores(self):
+
+        measure_param = {
+            'instrument': 'mock',
+            'measure_type': 'change',
+            'col_complete': 'complete',
+            'measure': 'mock',
+            'col_score': 'mock_score_local',
+            'col_items': [f'mock_q{idx}' for idx in range(1,6)],
+            'reverse_items': ['mock_q1', 'mock_q3', 'mock_q5',],
+            'min_score': 0,
+            'max_score': 100,}
+
+        df = pd.DataFrame({
+            'pID': [1, 2, 3, 4],
+            'tp': ['bsl']*4,
+            'complete': [2]*4,
+            'mock_q1': [0  , 100, 30, 10,],
+            'mock_q2': [100,   0, 70, 10,],
+            'mock_q3': [0  , 100, 25, 10,],
+            'mock_q4': [100,   0, 50, 10,],
+            'mock_q5': [0  , 100, 90, 10,],
+        })
+
+        df_solution = pd.DataFrame({
+            'pID': [1, 2, 3, 4],
+            'tp': ['bsl']*4,
+            'complete': [2]*4,
+            'mock_q1': [0  , 100, 30, 10,],
+            'mock_q2': [100,   0, 70, 10,],
+            'mock_q3': [0  , 100, 25, 10,],
+            'mock_q4': [100,   0, 50, 10,],
+            'mock_q5': [0  , 100, 90, 10,],
+             'mock_score_local': [500.0, 0, (70+70+75+50+10), (90*3+10*2)]
+        })
+
+        # Calculate & compare to solution
+        df, df_missingitems = core.DataWrangl.calc_scores(df, measure_param)
+        assert df_solution.equals(df)
+
+    def test_case5_calc_scores(self):
+
+        measure_param = {
+            'instrument': 'mock',
+            'measure_type': 'change',
+            'col_complete': 'complete',
+            'measure': 'mock',
+            'col_score': 'mock_score_local',
+            'col_items': [f'mock_q{idx}' for idx in range(1,6)],
+            'reverse_items': ['mock_q1', 'mock_q2'],
+            'min_score': 1,
+            'max_score': 5,}
+
+        df = pd.DataFrame({
+            'pID': [1, 2, 3, 4],
+            'tp': ['bsl']*4,
+            'complete': [2]*4,
+            'mock_q1': [1 , 5, 3, 5,],
+            'mock_q2': [1,  5, 3, 2,],
+            'mock_q3': [5 , 1, 2, 3,],
+            'mock_q4': [5,  1, 5, 1,],
+            'mock_q5': [5 , 1, 2, 1,],
+        })
+
+        df_solution = pd.DataFrame({
+            'pID': [1, 2, 3, 4],
+            'tp': ['bsl']*4,
+            'complete': [2]*4,
+            'mock_q1': [1 , 5, 3, 5,],
+            'mock_q2': [1,  5, 3, 2,],
+            'mock_q3': [5 , 1, 2, 3,],
+            'mock_q4': [5,  1, 5, 1,],
+            'mock_q5': [5 , 1, 2, 1,],
+            'mock_score_local': [25.0, 5, (3+3+2+5+2), (1+4+3+1+1)]
+        })
+
+        # Calculate & compare to solution
+        df, df_missingitems = core.DataWrangl.calc_scores(df, measure_param)
+        assert df_solution.equals(df)
+
+    def test_case6_calc_scores(self):
+
+        measure_param = {
+            'instrument': 'mock',
+            'measure_type': 'change',
+            'col_complete': 'complete',
+            'measure': 'mock',
+            'col_score': 'mock_score_local',
+            'col_items': [f'mock_q{idx}' for idx in range(1,6)],
+            'reverse_items': ['mock_q1', 'mock_q2'],
+            'min_score': 0,
+            'max_score': 5,}
+
+        df = pd.DataFrame({
+            'pID': [1, 2, 3, 4],
+            'tp': ['bsl']*4,
+            'complete': [2]*4,
+            'mock_q1': [0 , 5, 3, 5,],
+            'mock_q2': [0,  5, 0, 2,],
+            'mock_q3': [5 , 0, 2, 3,],
+            'mock_q4': [5,  0, 5, 0,],
+            'mock_q5': [5 , 0, 2, 1,],
+        })
+
+        df_solution = pd.DataFrame({
+            'pID': [1, 2, 3, 4],
+            'tp': ['bsl']*4,
+            'complete': [2]*4,
+            'mock_q1': [0 , 5, 3, 5,],
+            'mock_q2': [0,  5, 0, 2,],
+            'mock_q3': [5 , 0, 2, 3,],
+            'mock_q4': [5,  0, 5, 0,],
+            'mock_q5': [5 , 0, 2, 1,],
+            'mock_score_local': [25.0, 0, (2+5+2+5+2), (0+3+3+0+1)]
+        })
+
+        # Calculate & compare to solution
+        df, df_missingitems = core.DataWrangl.calc_scores(df, measure_param)
         assert df_solution.equals(df)
 
 
