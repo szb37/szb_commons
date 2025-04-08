@@ -620,8 +620,6 @@ class GetDfTpNdaysTests(AnalysisTests):
 
     def test_case0_get_df_tp_ndays(self):
 
-        #import pdb; pdb.set_trace()
-
         # Calculate
         df = core.DataWrangl.get_df_tp_ndays(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_wdates_case0.csv')),
