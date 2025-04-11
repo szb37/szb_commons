@@ -1,7 +1,8 @@
+import commons_codebase.src.eqscores_hamd as eqscores_hamd
 import commons_codebase.src.config as commons_config
 from statistics import mean, stdev
-from scipy import stats
 import matplotlib.pyplot as plt
+from scipy import stats
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -598,6 +599,62 @@ class Analysis():
 
         return df_res
 
+    @staticmethod
+    def insert_HAMDequal_score(df, cols, delta=False):
+        ''' Inserts new columns with the HAMD17 equivalent of cols.
+            The equivalent scores will be in the new column '{col}_HAMD'
+
+        Args:
+            df (pd.Dataframe):
+            cols (list of str): columns that are converted to HAMD17 equivalent
+            delta (bool): if True, then delta scores are converted
+
+        Returns:
+            df (pd.Dataframe): the original dataframe with the cols_HAMD column(s) added
+        '''
+
+        assert isinstance(df, pd.DataFrame)
+        assert isinstance(cols, list)
+        assert isinstance(delta, bool)
+
+        cidx_scale = df.columns.get_loc('scale')
+        errors=[]
+
+        for col in cols:
+
+            df.insert(len(df.columns), f'{col}_HAMD', math.nan)
+            cidx_original_col = df.columns.get_loc(col)
+            cidx_hamd_eq = df.columns.get_loc(f'{col}_HAMD')
+
+            for row in df.itertuples():
+
+                if df.iloc[row.Index, cidx_original_col] in [None, math.nan]:
+                    continue
+
+                if row.scale in ['HAMD', 'HAMD17', 'GRID-HAMD',]:
+                    # No need to convert, but double check if GRID-HAMD and HAMD refer to the 17 item version!
+                    df.iloc[row.Index, cidx_hamd_eq] = df.iloc[row.Index, cidx_original_col]
+                else:
+                    # attempt to convert
+                    hamd_eq, err = Helpers.convert_toHAMD(
+                        df.iloc[row.Index, cidx_original_col],
+                        df.iloc[row.Index, cidx_scale],
+                        delta=delta)
+
+                    df.iloc[row.Index, cidx_hamd_eq] = hamd_eq
+                    if err is not None:
+                        errors.append(err)
+
+            # Round results
+            df[f'{col}_HAMD'] = round(df[f'{col}_HAMD'].copy(), 3)
+
+        # Display unique errors
+        if errors!=[]:
+            for err in set(errors):
+                print(err)
+
+        return df
+
 
 class Plots():
     ''' Functions to help with figures '''
@@ -823,7 +880,6 @@ class CheckDf():
         assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
         assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
 
-
     @staticmethod
     def check_measure_types(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:
         ''' Check if all measure_type is one of the expected values:
@@ -889,6 +945,69 @@ class Helpers():
             assert False
 
         return has_time
+
+    @staticmethod
+    def convert_toHAMD(score, scale, delta=False):
+        ''' Converts scores to HAMD17 equivalent.
+
+        Args:
+            score (float): original score
+            scale (str): convert from what scale to HAMD17 equivalent
+            delta (bool): if True, then delta scores are converted
+
+        Returns:
+            hamd_score (pd.Dataframe): HAMD17 equivalent score
+            err (str): error message if any
+        '''
+
+        assert isinstance(delta, bool)
+        assert isinstance(scale, str)
+
+        if (score in [math.nan, None]) or math.isnan(score):
+            return math.nan, None
+
+        if scale=='svMADRS': # scored the same way
+            scale='MADRS'
+        if scale=='BDI': # default version of the scale
+            scale='BDI1'
+
+        # Convert score to float
+        if delta is True:
+            sign = -1 if score < 0 else 1
+            score = float(abs(score))
+        else:
+            sign = 1
+            score = float(score)
+
+        # Get the right eq score dict
+        if delta is False:
+            if f'{scale.upper()}_to_HAMD17' in eqscores_hamd.eqscores.keys():
+                xy_pairs=eqscores_hamd.eqscores[f'{scale.upper()}_to_HAMD17']
+            else:
+                return math.nan, f'HAMD17 eq scores are not defined for scale {scale.upper()}; converts to math.nan'
+        else:
+            if f'Δ{scale.upper()}_to_ΔHAMD17' in eqscores_hamd.eqscores.keys():
+                xy_pairs=eqscores_hamd.eqscores[f'Δ{scale.upper()}_to_ΔHAMD17']
+            else:
+                return math.nan, f'HAMD17 eq Δ scores are not defined for scale {scale.upper()}; converts to math.nan'
+
+        # Sort the eq score dictionary
+        sorted_pairs = sorted(xy_pairs.items())
+        x_vals = [pair[0] for pair in sorted_pairs]
+        y_vals = [pair[1] for pair in sorted_pairs]
+
+        if score < x_vals[0]:
+            return math.nan, 'Some scores are below the defined minimum and cannot be converted to HAMD17; converts to math.nan'
+        elif score > x_vals[-1]:
+            return math.nan, 'Some scores are above the defined minimum and cannot be converted to HAMD17; converts to math.nan'
+
+        ### Interpolate between the points
+        for i in range(len(x_vals) - 1):
+            if x_vals[i] <= score < x_vals[i+1]:
+                hamd_score = round((y_vals[i] + (y_vals[i+1] - y_vals[i]) * (score - x_vals[i]) / (x_vals[i+1] - x_vals[i])), 2)
+                break
+
+        return (sign*hamd_score), None
 
 
 class UndecidedHasTime(Exception):

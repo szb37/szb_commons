@@ -747,3 +747,45 @@ class GetCorrmatTests(AnalysisTests):
         df_solution_pvalues = pd.read_csv(os.path.join(folders.fixtures_out, 'corrmat_[A21-bsl_vs_A0]_kendall_pvalues.csv'), index_col=0)
         assert df_solution_coeffs.equals(df_coeffs)
         assert df_solution_pvalues.equals(df_pvalues)
+
+
+class InsertHAMDequalScore(AnalysisTests):
+
+    def test_convert_toHAMD(self):
+
+        assert core.Helpers.convert_toHAMD(14, 'BDI', delta=False)==(12.5, None)
+        assert core.Helpers.convert_toHAMD(14, 'BDI1', delta=False)==(12.5, None)
+        assert core.Helpers.convert_toHAMD(9, 'BDI', delta=False)==(9, None)
+        assert core.Helpers.convert_toHAMD(14, 'BDI', delta=True)==(9.5, None)
+        assert core.Helpers.convert_toHAMD(-14, 'BDI', delta=True)==(-9.5, None)
+        assert core.Helpers.convert_toHAMD(-1, 'BDI', delta=False)== \
+            (math.nan, 'Some scores are below the defined minimum and cannot be converted to HAMD17; converts to math.nan')
+        assert core.Helpers.convert_toHAMD(200, 'BDI', delta=False)== \
+            (math.nan, 'Some scores are above the defined minimum and cannot be converted to HAMD17; converts to math.nan')
+
+        assert core.Helpers.convert_toHAMD(4, 'MADRS', delta=False)==(4, None)
+        assert core.Helpers.convert_toHAMD(29, 'MADRS', delta=False)==(23, None)
+        assert core.Helpers.convert_toHAMD(30, 'MADRS', delta=False)==(23, None)
+        assert core.Helpers.convert_toHAMD(33.2, 'MADRS', delta=False)==(25.2, None)
+        assert core.Helpers.convert_toHAMD(33.7, 'MADRS', delta=False)==(25.7, None)
+        assert core.Helpers.convert_toHAMD(14, 'MADRS', delta=True)==(12, None)
+        assert core.Helpers.convert_toHAMD(-14, 'MADRS', delta=True)==(-12, None)
+        assert core.Helpers.convert_toHAMD(-1, 'MADRS', delta=False)== \
+            (math.nan, 'Some scores are below the defined minimum and cannot be converted to HAMD17; converts to math.nan')
+        assert core.Helpers.convert_toHAMD(200, 'MADRS', delta=False)== \
+            (math.nan, 'Some scores are above the defined minimum and cannot be converted to HAMD17; converts to math.nan')
+
+        assert core.Helpers.convert_toHAMD(0, 'AGYFASZ', delta=False)== \
+            (math.nan, f'HAMD17 eq scores are not defined for scale AGYFASZ; converts to math.nan')
+        assert core.Helpers.convert_toHAMD(0, 'AGYFASZ', delta=True)== \
+            (math.nan, f'HAMD17 eq Δ scores are not defined for scale AGYFASZ; converts to math.nan')
+
+    def test_case0_insert_HAMDequal_score(self):
+
+        df = pd.read_csv(os.path.join(folders.fixtures_in, 'df_hamdconvert_v0.csv'))
+
+        df = core.Analysis.insert_HAMDequal_score(df, cols=['mean'], delta=False)
+        df = core.Analysis.insert_HAMDequal_score(df, cols=['delta_mean'], delta=True)
+
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_insertHAMDeq_case0.csv'))
+        assert df_solution.equals(df)
