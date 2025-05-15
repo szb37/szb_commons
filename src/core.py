@@ -19,6 +19,45 @@ class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
     @staticmethod
+    def clean_df_redcap(df_redcap:pd.DataFrame, rename_tps:dict={}, rm_spurious_tps:bool=True, rm_test_rows:bool=True) -> pd.DataFrame:
+        """ Clean df_redcap by removing spurious tps and renaming tps if needed.
+
+        Args:
+            - df_redcap (pd.DataFrame): raw REDCap export df
+            - rename_tps (dict; optional): dictionary with keys tp_old tp_new that determine which tps to rename
+            - rm_spurious_tps (bool; optional): whether to remove spurious tps
+            - rm_test_rows (bool; optional): whether to remove test rows
+
+        Returns:
+            - df_redcap (pd.DataFrame): cleaned df_redcap
+        """
+
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(rename_tps, dict)
+        assert isinstance(rm_spurious_tps, bool)
+
+        # rename columns
+        df_redcap = df_redcap.rename(columns={
+            'participant_id': 'pID',
+            'record_id': 'pID',
+            'redcap_event_name': 'tp',})
+
+        # rename timepoints
+        if rename_tps!={}:
+            df_redcap['tp'] = df_redcap['tp'].replace(rename_tps)
+
+        # remove spurious timepoints
+        if rm_spurious_tps:
+            df_redcap = df_redcap.loc[df_redcap.tp.isin(rename_tps.values())]
+
+        # remove test rows & convert pID to numeric
+        if rm_test_rows:
+            df_redcap = df_redcap[~df_redcap['pID'].str.contains('test', case=False)]
+            df_redcap.pID = pd.to_numeric(df_redcap['pID'])
+
+        return df_redcap
+
+    @staticmethod
     def get_df_measure(df_redcap:pd.DataFrame, measure_param:dict, cols_to_keep:list[str]=commons_config.cols_to_keep, **save)-> pd.DataFrame:
         ''' Returns all completed scores of a given measure in long-formatted df.
             Rows are removed that have missing value in any of the pID/tp/score columns.
@@ -447,6 +486,118 @@ class DataWrangl():
             print(f"Can not decide whether measure has time: {[measure for measure in undecided_has_time]}")
 
         return df_master
+
+    @staticmethod
+    def get_df_aes(df_redcap, df_redcap_datalabels, **save):
+        # Switching out meddra codes for titles
+        cidx_meddra = df_redcap.columns.get_loc('ae_1')
+        df_redcap.iloc[:, cidx_meddra] = df_redcap_datalabels.iloc[:, cidx_meddra]
+
+        df_ae = df_redcap[df_redcap.adverse_event_log_complete==2]
+        df_ae = df_ae[~df_ae['pID'].str.contains('test', case=False)]
+
+        ### Rename columns
+        df_ae = df_ae[["pID", "tp"] + [col for col in df_ae.columns if "ae_" in col]]
+        df_ae = df_ae.rename(columns={
+            'ae_1':  'meddra',
+            'ae_8':  'description',
+            'ae_2':  'category',
+            'ae_10': 'start_date',
+            'ae_13': 'last_dose',
+            'ae_16': 'was_intervention',
+            'ae_9':  'intervention_desc',
+            'ae_19': 'outcome', 
+            'ae_20': 'severity',
+            'ae_21': 'is_serious',
+            'ae_22': 'outcome_of_serious',
+            'ae_26': 'related_drug',
+            'ae_27': 'related_procedures',
+            'ae_28': 'action',
+            'ae_30': 'date_attestation',})
+
+        ### Set end_date to the most recent date among follow-ups
+        df_ae['end_date'] = None
+        fu_cols = [f"ae_fu{i}_8" for i in range(1, 11) if f"ae_fu{i}_8" in df_ae.columns] + ['ae_12']
+        df_ae['end_date'] = df_ae[fu_cols].apply(lambda row: pd.to_datetime(row, errors='coerce').max(), axis=1)
+
+        ### Compute is_expected_combined using ae_24 and ae_25
+        conds = [
+            (df_ae['ae_24'] == 1) & (df_ae['ae_25'] == 1),
+            (df_ae['ae_24'] == 1) & (df_ae['ae_25'] == 2),
+            (df_ae['ae_24'] == 1) & (df_ae['ae_25'].isna()),
+            (df_ae['ae_24'] == 2)]
+        choices = [
+            'Expected result of study drug(s)',
+            'Expected result of study procedure(s)',
+            'Expected, but neither "expected of drug" nor "expected of procedure" was selected',
+            'Not Expected']
+        df_ae['is_expected'] = np.select(conds, choices, default='Not Expected')
+
+        ### Compute serious outcomes
+        df_ae['outcome_serious'] = df_ae.apply(DataWrangl.get_outcome_serious, axis=1)
+
+        ### Recode responses
+        df_ae["severity"] = df_ae["severity"].replace({
+            1: "Mild",
+            2: "Moderate",
+            3: "Severe",
+            4: "Life-threatening"})
+        df_ae["category"] = df_ae["category"].replace({
+            1: "Cardiovascular",
+            2: "Respiratory",
+            3: "Gastrointestinal",
+            4: "Genitourinary",
+            5: "Musculoskeletal",
+            6: "Dermatologic",
+            7: "Neurologic",
+            8: "Hematologic"})
+        df_ae["related_drug"] = df_ae["related_drug"].replace({
+            0: "Not Related",
+            1: "Possible",
+            2: "Probable",
+            3: "Definite"})
+        df_ae["related_procedures"] = df_ae["related_procedures"].replace({
+            0: "Not Related",
+            1: "Possible",
+            2: "Probable",
+            3: "Definite"})
+        df_ae["action"] = df_ae["action"].replace({
+            1: "PI has decided to withdraw the participant from the study.",
+            2: "PI has decided to withhold further drug administration.",
+            3: "Participant has decided to withdraw from the study.",
+            4: "No action on enrollment by study team or participant.",}) 
+        df_ae["outcome"] = df_ae["outcome"].replace({
+            1: "Life-threatening/Fatal",
+            2: "Chronic/not expected to recover",
+            3: "Expected to recover prior to end of participation",
+            4: "Expected to recover after end of participation",
+            5: "Recovered at time of initial report",}) 
+
+        ### Organize columns
+        df_ae = df_ae[[
+            'pID', 'meddra', 'category', 'description', 
+            'severity', 'is_serious', 
+            'was_intervention', 'intervention_desc',
+            'is_expected', 'related_drug', 'related_procedures',
+            'start_date', 'end_date', 'last_dose', 'action','outcome', 'outcome_serious',
+            ]]
+
+        if save!={}: 
+            df_ae.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+
+        return df_ae
+
+    @staticmethod
+    def get_outcome_serious(row):
+        serious_map = {
+            'ae_22___1': 'Death',
+            'ae_22___2': 'Life-threatening',
+            'ae_22___3': 'Requires or prolongs hospitalization (does not include ED visits w/o admission)',
+            'ae_22___4': 'Disability or permanent damage',
+            'ae_22___5': 'Congenital abnormality/birth defect or cancer',
+            'ae_22___6': 'Required intervention (medical or surgical) to prevent permanent impairment or damage or prevent outcome listed above'}
+        outcomes = [serious_map[col] for col in serious_map if row.get(col, 0) == 1]
+        return '; '.join(outcomes) if outcomes else ''
 
 
 class Analysis():
