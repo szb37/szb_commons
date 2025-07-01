@@ -19,41 +19,54 @@ class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
     @staticmethod
-    def clean_df_redcap(df_redcap:pd.DataFrame, rename_tps:dict={}, rm_spurious_tps:bool=True, rm_test_rows:bool=True) -> pd.DataFrame:
-        """ Clean df_redcap by removing spurious tps and renaming tps if needed.
+    def clean_df_redcap(df_redcap:pd.DataFrame, rename_tps:dict={}, n_prefix_chars:int=0, rm_tps:list=[], convert_pids_int:bool=True) -> pd.DataFrame:
+        """
+        Clean df_redcap by optionally renaming timepoints, removing specified timepoints, and converting pID to integer.
 
         Args:
-            - df_redcap (pd.DataFrame): raw REDCap export df
-            - rename_tps (dict; optional): dictionary with keys tp_old tp_new that determine which tps to rename
-            - rm_spurious_tps (bool; optional): whether to remove spurious tps
-            - rm_test_rows (bool; optional): whether to remove test rows
+            df_redcap (pd.DataFrame): Raw REDCap export dataframe.
+            rename_tps (dict, optional): Dictionary mapping old to new timepoint names (e.g., {'tp_old': 'tp_new'}). Default is {} (no renaming).
+            n_prefix_chars (int, optional): Number of characters to remove from the start of each pID value before converting to integer. Default is 0.
+            rm_tps (list, optional): List of timepoints to remove from the dataframe. Rows with tp in this list will be dropped. Default is [].
+            convert_pids_int (bool, optional): Whether to convert pID to int and remove rows with non-convertible pIDs. Default is True.
 
         Returns:
-            - df_redcap (pd.DataFrame): cleaned df_redcap
+            pd.DataFrame: Cleaned REDCap dataframe.
         """
 
         assert isinstance(df_redcap, pd.DataFrame)
         assert isinstance(rename_tps, dict)
-        assert isinstance(rm_spurious_tps, bool)
+        assert isinstance(n_prefix_chars, int)
+        assert isinstance(rm_tps, list)
+        assert isinstance( convert_pids_int, bool)
 
-        # rename columns
+        ### Rename columns & tps; remove spurious timepoints
         df_redcap = df_redcap.rename(columns={
             'participant_id': 'pID',
             'record_id': 'pID',
             'redcap_event_name': 'tp',})
 
-        # rename timepoints
         if rename_tps!={}:
             df_redcap['tp'] = df_redcap['tp'].replace(rename_tps)
 
-        # remove spurious timepoints
-        if rm_spurious_tps:
-            df_redcap = df_redcap.loc[df_redcap.tp.isin(rename_tps.values())]
+        if rm_tps != []:
+            df_redcap = df_redcap.loc[~df_redcap.tp.isin(rm_tps)]
 
-        # remove test rows & convert pID to numeric
-        if rm_test_rows:
-            df_redcap = df_redcap[~df_redcap['pID'].str.contains('test', case=False)]
-            df_redcap.pID = pd.to_numeric(df_redcap['pID'])
+        # Remove pID prefixes prior to INT conversion
+        if n_prefix_chars > 0:
+            df_redcap['pID'] = df_redcap['pID'].astype(str).str[n_prefix_chars:]
+
+        # Convert pID to numeric, print & delete non-convertible pIDs 
+        if convert_pids_int:
+            pID_numeric = pd.to_numeric(df_redcap['pID'], errors='coerce')
+            bad_pids = df_redcap.loc[pID_numeric.isna(), 'pID'].unique()
+            if len(bad_pids) > 0:
+                print(f'Unique pIDs that could not be converted to int (deleting rows):')
+                for bad_pid in bad_pids:
+                    print(f'\t{bad_pid}')
+
+            df_redcap = df_redcap.loc[~pID_numeric.isna()].copy()
+            df_redcap['pID'] = pID_numeric[~pID_numeric.isna()].astype(int)
 
         return df_redcap
 
@@ -135,6 +148,8 @@ class DataWrangl():
 
         df = df_redcap.rename(columns={col_date: 'date',})
         df = df.loc[(df.study_visit_completion_record_complete==2)]
+
+        import pdb; pdb.set_trace()
         df = df[['pID', 'tp', 'date']]
         df = df.dropna()
         df.date = pd.to_datetime(df.date)
@@ -489,12 +504,13 @@ class DataWrangl():
 
     @staticmethod
     def get_df_aes(df_redcap, df_redcap_datalabels, **save):
+        
         # Switching out meddra codes for titles
         cidx_meddra = df_redcap.columns.get_loc('ae_1')
         df_redcap.iloc[:, cidx_meddra] = df_redcap_datalabels.iloc[:, cidx_meddra]
-
+        
         df_ae = df_redcap[df_redcap.adverse_event_log_complete==2]
-        df_ae = df_ae[~df_ae['pID'].str.contains('test', case=False)]
+        #df_ae = df_ae[~df_ae['pID'].str.contains('test', case=False)]
 
         ### Rename columns
         df_ae = df_ae[["pID", "tp"] + [col for col in df_ae.columns if "ae_" in col]]
@@ -503,7 +519,8 @@ class DataWrangl():
             'ae_8':  'description',
             'ae_2':  'category',
             'ae_10': 'start_date',
-            'ae_13': 'last_dose',
+            'ae_13': 'last_dose_date',
+            'ae_13a___1': 'is_predrug',
             'ae_16': 'was_intervention',
             'ae_9':  'intervention_desc',
             'ae_19': 'outcome', 
@@ -579,7 +596,7 @@ class DataWrangl():
             'severity', 'is_serious', 
             'was_intervention', 'intervention_desc',
             'is_expected', 'related_drug', 'related_procedures',
-            'start_date', 'end_date', 'last_dose', 'action','outcome', 'outcome_serious',
+            'start_date', 'end_date', 'last_dose_date', 'is_predrug', 'action','outcome', 'outcome_serious',
             ]]
 
         if save!={}: 
