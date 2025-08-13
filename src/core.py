@@ -149,7 +149,6 @@ class DataWrangl():
         df = df_redcap.rename(columns={col_date: 'date',})
         df = df.loc[(df.study_visit_completion_record_complete==2)]
 
-        import pdb; pdb.set_trace()
         df = df[['pID', 'tp', 'date']]
         df = df.dropna()
         df.date = pd.to_datetime(df.date)

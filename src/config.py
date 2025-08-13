@@ -14,7 +14,7 @@ plt.rcParams['text.usetex'] = False  # Use TeX to handle text (embeds fonts)
 title_fontdict = {'fontsize': 16, 'fontweight': 'bold'}
 axislabel_fontdict = {'fontsize': 14, 'fontweight': 'bold'}
 ticklabel_fontsize = 14
-save_SVG = False
+save_SVG = True
 save_PNG = True
 
 ### Examples to show format of measure_params
