@@ -648,12 +648,13 @@ class Analysis():
             rows_observed.append([
                 measure,
                 tp,
+                len(scores),
                 round(mean(scores), digits),
                 round(stdev(scores), digits),])
 
         ### Create DF from list of rows
         df_observed = pd.DataFrame(
-            columns=['measure','tp','mean','sd'],
+            columns=['measure','tp','n','mean','sd'],
             data=rows_observed)
 
         ### Save if needed, return output
@@ -693,6 +694,11 @@ class Analysis():
 
                 df_pair = df[[var1, var2]]
                 df_pair = df_pair.dropna()
+
+                if var1 == var2:
+                    df_coeffs.at[var2, var1] = 1
+                    df_pvalues.at[var2, var1] = 0
+                    continue
 
                 if method == 'pearson':
                      result_corr = stats.pearsonr(df_pair[var1], df_pair[var2])
