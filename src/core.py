@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
-    @staticmethod
+    @staticmethod #untested
     def clean_df_redcap(df_redcap:pd.DataFrame, rename_tps:dict={}, n_prefix_chars:int=0, rm_tps:list=[], convert_pids_int:bool=True) -> pd.DataFrame:
         """
         Clean df_redcap by optionally renaming timepoints, removing specified timepoints, and converting pID to integer.
@@ -40,24 +40,26 @@ class DataWrangl():
         assert isinstance(rm_tps, list)
         assert isinstance( convert_pids_int, bool)
 
-        ### Rename columns & tps; remove spurious timepoints
-        df_redcap = df_redcap.rename(columns={
-            'participant_id': 'pID',
-            'record_id': 'pID',
-            'redcap_event_name': 'tp',})
+        ### Rename columns
+        df_redcap = df_redcap.rename(
+            columns = commons_config.redcap_cols_to_master_cols)
 
-        if rename_tps!={}:
-            df_redcap['tp'] = df_redcap['tp'].replace(rename_tps)
-
+        ### Remove spurious timepoints if needed
         if rm_tps != []:
             df_redcap = df_redcap.loc[~df_redcap.tp.isin(rm_tps)]
 
-        # Remove pID prefixes prior to INT conversion
+        ### Rename timepoints if needed
+        if rename_tps!={}:
+            df_redcap['tp'] = df_redcap['tp'].replace(rename_tps)
+
+        ### Remove pID prefixes prior to INT conversion
+        #   For example, if pID is 'PDP2001', and n_prefix_chars=3, then result is 2001 
         if n_prefix_chars > 0:
             df_redcap['pID'] = df_redcap['pID'].astype(str).str[n_prefix_chars:]
 
-        # Convert pID to numeric, print & delete non-convertible pIDs 
+        ### Convert pID to numeric, print & delete non-convertible pIDs 
         if convert_pids_int:
+
             pID_numeric = pd.to_numeric(df_redcap['pID'], errors='coerce')
             bad_pids = df_redcap.loc[pID_numeric.isna(), 'pID'].unique()
             if len(bad_pids) > 0:
@@ -192,7 +194,7 @@ class DataWrangl():
 
         return df_tp_ndays
 
-    @staticmethod
+    @staticmethod #untested
     def get_df_dosedates(df_redcap, col_date, dose_tps=['A0', 'B0', 'C0', 'D0',], **save):
         ''' Get df of when each dose was administered
             Args:
@@ -221,7 +223,7 @@ class DataWrangl():
 
         return df_dosedates
 
-    @staticmethod
+    @staticmethod #untested
     def format_bsl_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
         ''' Deal with inconcistsent naming convention between baseline and post-baseline vitals measures.
             Need to call this before get_df_vitals().
@@ -258,7 +260,7 @@ class DataWrangl():
 
         return df_redcap
 
-    @staticmethod
+    @staticmethod 
     def get_df_vitals(df_redcap:pd.DataFrame, measure_param:dict, **save) -> pd.DataFrame:
         ''' Special case of get_df_measure() to deal with the idiosyncrasies of vitals measures.
             Specifically, there is either 1 or 2 readings of vitals.
@@ -501,7 +503,7 @@ class DataWrangl():
 
         return df_master
 
-    @staticmethod
+    @staticmethod #untested
     def get_df_aes(df_redcap, df_redcap_datalabels, **save):
         
         # Switching out meddra codes for titles
@@ -603,7 +605,7 @@ class DataWrangl():
 
         return df_ae
 
-    @staticmethod
+    @staticmethod # move to Helpers
     def get_outcome_serious(row):
         serious_map = {
             'ae_22___1': 'Death',
@@ -733,7 +735,7 @@ class Analysis():
                 df_pvalues=df_pvalues,
                 **kwargs,)
 
-    @staticmethod
+    @staticmethod # untested
     def get_missing_scores(df_master, measure_params, **save):
         ''' Get df of missing scores
         Args:

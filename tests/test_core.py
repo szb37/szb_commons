@@ -1,22 +1,18 @@
 """
 Run from \szb_commons\commons_codebase\:
 python -m pytest .\tests\test_core.py
-
-Use decorator to skip a test temporarily:
-@unittest.skip('wip')
+Use decorator to skip a test temporarily: @unittest.skip('wip')
 """
 
 import sys
 path_szb_commons = 'C:/Users/szb37/My Drive/Work efforts/szb_commons/'
 sys.path.append(path_szb_commons)
-
 import src.core as core
 import src.folders as folders
 import src.config as config
 from unittest import mock
 import pandas as pd
 import unittest
-import pytest
 import math
 import os
 

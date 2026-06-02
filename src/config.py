@@ -17,6 +17,14 @@ ticklabel_fontsize = 14
 save_SVG = True
 save_PNG = True
 
+# Renaming of redcap columns 
+redcap_cols_to_master_cols = {
+    'participant_id': 'pID',
+    'record_id': 'pID',
+    'redcap_event_name': 'tp',}
+
+
+
 ### Examples to show format of measure_params
 #   measure_params is a list of dictionaries, where each dictionary defines a measure
 #   The keys below for each measure_param are mandatory, but can add other keys
