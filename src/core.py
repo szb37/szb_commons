@@ -18,123 +18,152 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 class DataWrangl():
     ''' Functions for common data wrangling tasks '''
 
-    @staticmethod #untested
-    def clean_df_redcap(df_redcap:pd.DataFrame, rename_tps:dict={}, n_prefix_chars:int=0, rm_tps:list=[], convert_pids_int:bool=True) -> pd.DataFrame:
+    @staticmethod
+    def clean_df_redcap(df_redcap, rename_cols={}, rename_tps={}, rm_tps=[],):
         """
-        Clean df_redcap by optionally renaming timepoints, removing specified timepoints, and converting pID to integer.
+        Rename_columns, rename timepoints, remove spurious timepoints.
 
         Args:
             df_redcap (pd.DataFrame): Raw REDCap export dataframe.
             rename_tps (dict, optional): Dictionary mapping old to new timepoint names (e.g., {'tp_old': 'tp_new'}). Default is {} (no renaming).
-            n_prefix_chars (int, optional): Number of characters to remove from the start of each pID value before converting to integer. Default is 0.
             rm_tps (list, optional): List of timepoints to remove from the dataframe. Rows with tp in this list will be dropped. Default is [].
-            convert_pids_int (bool, optional): Whether to convert pID to int and remove rows with non-convertible pIDs. Default is True.
 
         Returns:
             pd.DataFrame: Cleaned REDCap dataframe.
         """
 
         assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(rename_cols, dict)
         assert isinstance(rename_tps, dict)
-        assert isinstance(n_prefix_chars, int)
         assert isinstance(rm_tps, list)
-        assert isinstance( convert_pids_int, bool)
 
         ### Rename columns
-        df_redcap = df_redcap.rename(
-            columns = commons_config.redcap_cols_to_master_cols)
+        df_redcap = df_redcap.rename(columns = rename_cols)
+        ### Rename timepoints
+        df_redcap['tp'] = df_redcap['tp'].replace(rename_tps)
+        ### Remove spurious timepoints
+        df_redcap = df_redcap.loc[~df_redcap.tp.isin(rm_tps)]
 
-        ### Remove spurious timepoints if needed
-        if rm_tps != []:
-            df_redcap = df_redcap.loc[~df_redcap.tp.isin(rm_tps)]
-
-        ### Rename timepoints if needed
-        if rename_tps!={}:
-            df_redcap['tp'] = df_redcap['tp'].replace(rename_tps)
-
-        ### Remove pID prefixes prior to INT conversion
-        #   For example, if pID is 'PDP2001', and n_prefix_chars=3, then result is 2001 
-        if n_prefix_chars > 0:
-            df_redcap['pID'] = df_redcap['pID'].astype(str).str[n_prefix_chars:]
-
-        ### Convert pID to numeric, print & delete non-convertible pIDs 
-        if convert_pids_int:
-
-            pID_numeric = pd.to_numeric(df_redcap['pID'], errors='coerce')
-            bad_pids = df_redcap.loc[pID_numeric.isna(), 'pID'].unique()
-            if len(bad_pids) > 0:
-                print(f'Unique pIDs that could not be converted to int (deleting rows):')
-                for bad_pid in bad_pids:
-                    print(f'\t{bad_pid}')
-
-            df_redcap = df_redcap.loc[~pID_numeric.isna()].copy()
-            df_redcap['pID'] = pID_numeric[~pID_numeric.isna()].astype(int)
+        ### Check if all tps have been renamed or not
+        valid_tps = list(set(rename_tps.values()))
+        invalid_tps = list(set(df_redcap.loc[~df_redcap.tp.isin(valid_tps), 'tp']))
+        if len(invalid_tps)>0:
+            print(f'Non-defined tps found in df_redcap: {invalid_tps}')
 
         return df_redcap
 
     @staticmethod
-    def get_df_measure(df_redcap:pd.DataFrame, measure_param:dict, cols_to_keep:list[str]=commons_config.cols_to_keep, **save)-> pd.DataFrame:
-        ''' Returns all completed scores of a given measure in long-formatted df.
-            Rows are removed that have missing value in any of the pID/tp/score columns.
+    def clean_pIDs(df_redcap, n_prefix_chars=0,):
+        ### Convert pIDs to numeric
+        ### Remove first n_prefix_chars from pID prior to INT conversion
+        #   For example, if pID is 'PDP2001', and n_prefix_chars=3, then result is 2001
+        if n_prefix_chars > 0:
+            df_redcap['pID'] = df_redcap['pID'].astype(str).str[n_prefix_chars:]
+
+        ### Print & delete non-convertible pIDs
+        pID_numeric = pd.to_numeric(df_redcap['pID'], errors='coerce')
+        invalid_pids = df_redcap.loc[pID_numeric.isna(), 'pID'].unique()
+        if len(invalid_pids) > 0:
+            print(f'Unique pIDs that could not be converted to int (deleting rows):')
+            for invalid_pid in invalid_pids:
+                print(f'\t{invalid_pid}')
+
+        df_redcap = df_redcap.loc[~pID_numeric.isna()].copy()
+        df_redcap['pID'] = pID_numeric[~pID_numeric.isna()].astype(int)
+
+        return df_redcap
+
+    @staticmethod
+    def replace_tps(df, repeated_tps={}):
+        ''' Replace repeated timepoints in a long-form dataframe.
+
+            For each (new_tp, old_tp) pair in `repeated_tps`, rows tagged with
+            `new_tp` override rows with `old_tp` for the same (pID, measure).
+            Discrepancies in non-value identifying columns raise a warning.
+            After replacement, any residual duplicated (pID, tp, measure)
+            combinations are flagged and returned separately.
 
             Args:
-                - df_redcap: raw export from REDCap
-                - cols_to_keep: what columns from the REDCAP df should be kept in returned df
-                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
-                        - 'instrument': value of the "instrument" column in the returned df;
-                        - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
-                        - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
-                        - 'col_score': column name in df_redcap, which stores score
-                        - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
-                - save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
+                - df (pd.DataFrame): long-form dataframe with columns
+                    including 'pID', 'tp', 'measure', 'score' (and optionally
+                    'delta_score').
+                - repeated_tps (dict): mapping of {new_tp: old_tp} indicating
+                    which repeat-timepoint rows should overwrite which
+                    originals (e.g. {'bsl_R1': 'bsl', 'A0_R1': 'A0'}).
 
             Returns:
-                - df (pd.DataFrame): longform df with all scores of the defined measure
+                - df (pd.DataFrame): dataframe after replacement, with the
+                    new_tp rows removed.
+                - df_replaced_rows (pd.DataFrame): all rows (with every
+                    column, pre-replacement state) whose values were
+                    overwritten by a repeat-timepoint row. Empty if none.
+                - df_duplicate_rows (pd.DataFrame): all rows (with every
+                    column) that share a (pID, tp, measure) combination
+                    appearing more than once after replacement. Empty if
+                    none exist.
         '''
 
-        assert isinstance(df_redcap, pd.DataFrame)
-        assert isinstance(measure_param, dict)
-        assert all([field in measure_param.keys() for field in
-            ['instrument', 'measure', 'measure_type', 'col_complete', 'col_score',]])
-        assert isinstance(cols_to_keep, list)
+        key_cols = ['pID', 'measure', 'time']
+        ignore_cols = set(key_cols + ['tp', 'score', 'delta_score'])
+        compare_cols = [c for c in df.columns if c not in ignore_cols]
 
-        # define variables
-        df = df_redcap.copy()
-        col_score = measure_param['col_score']
-        col_complete = measure_param['col_complete']
+        replaced_rows = []
 
-        # reduce dataframe
-        if col_complete is not None:
-            df = df.loc[(df[col_complete]==2)]
-        df = df[cols_to_keep + [col_score]]
+        for new_tp, old_tp in repeated_tps.items():
+            new_rows = df.loc[df.tp == new_tp]
+            for new_idx, new_row in new_rows.iterrows():
+                pID = new_row['pID']
+                measure = new_row['measure']
+                old_mask = (
+                    (df.pID == pID) &
+                    (df.measure == measure) &
+                    (df.tp == old_tp))
+                old_matches = df.loc[old_mask]
 
-        # rename / add bookkeeping columns
-        df.rename(columns={col_score: 'score'}, inplace=True)
-        df['instrument'] = measure_param['instrument']
-        df['measure'] = measure_param['measure']
-        df['measure_type'] = measure_param['measure_type']
+                if old_matches.empty:
+                    ### No original row to replace; just relabel the repeat as the original tp
+                    df.at[new_idx, 'tp'] = old_tp
+                    continue
 
-        # deal with time
-        if 'time' in measure_param.keys():
-            df['time'] = measure_param['time']
+                ### Check for discrepancies in non-value columns
+                old_row = old_matches.iloc[0]
+                for col in compare_cols:
+                    old_val = old_row[col]
+                    new_val = new_row[col]
+                    if pd.isna(old_val) and pd.isna(new_val):
+                        continue
+                    if old_val != new_val:
+                        warnings.warn(
+                            f"Discrepancy for pID={pID}, measure={measure}, column '{col}': "
+                            f"{new_tp}={new_val!r} vs {old_tp}={old_val!r}")
+
+                ### Capture the pre-replacement row before overwriting
+                replaced_rows.append(old_row.copy())
+
+                ### Replace old row's values with new row's (keep tp=old_tp)
+                replacement = new_row.copy()
+                replacement['tp'] = old_tp
+                df.loc[old_matches.index[0], df.columns] = replacement.values
+
+            ### Drop the repeat rows now that their data has been merged into old_tp
+            df = df.loc[df.tp != new_tp].reset_index(drop=True)
+
+        ### Build df of replaced rows (pre-replacement state)
+        if replaced_rows:
+            df_replaced_rows = pd.DataFrame(replaced_rows).reset_index(drop=True)
+            df_replaced_rows = df_replaced_rows.sort_values(['pID', 'measure', 'tp']).reset_index(drop=True)
         else:
-            df['time'] = math.nan
+            df_replaced_rows = pd.DataFrame(columns=df.columns)
 
-        ### Cleanup, save, return output
-        df = df.dropna(subset=(['pID', 'tp', 'score']))
-        df['score'] = df['score'].astype('float64')
-        df['time'] = df['time'].astype('float64')
-        df = df[cols_to_keep+['measure_type','instrument','measure','time','score']]
-        df.reset_index(inplace=True, drop=True)
+        ### Detect residual duplicates on (pID, tp, measure)
+        dup_mask = df.duplicated(subset=['pID', 'tp', 'measure', 'time'], keep=False)
+        df_duplicate_rows = df.loc[dup_mask].sort_values(['pID', 'measure', 'tp']).reset_index(drop=True)
 
-        if save!={}:
-            df.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
-
-        return df
+        return df, df_replaced_rows, df_duplicate_rows
 
     @staticmethod
     def get_df_tp_ndays(df_redcap:pd.DataFrame, col_date:str, **save) -> pd.DataFrame:
-        ''' Get df of the average number of days since baseline for each timepoint.
+        ''' Get df of the median number of days since baseline for each timepoint.
 
             Args:
                 - df_redcap (pd.DataFrame): raw REDCap export df
@@ -178,10 +207,10 @@ class DataWrangl():
                     ndays.append(
                         (df.iloc[row_tp.index[0], cidx_date] - df.iloc[row_bsl.index[0], cidx_date]).days)
 
-            ### Create row with avg number of days between baseline and tp
+            ### Create row with median number of days between baseline and tp
             df_tp_ndays_rows.append([
                 tp,
-                round(np.array(ndays).mean()),
+                round(np.median(np.array(ndays))),
                 len(ndays)])
 
         ### Convert list of rows to df
@@ -194,73 +223,195 @@ class DataWrangl():
 
         return df_tp_ndays
 
-    @staticmethod #untested
-    def get_df_dosedates(df_redcap, col_date, dose_tps=['A0', 'B0', 'C0', 'D0',], **save):
-        ''' Get df of when each dose was administered
-            Args:
-                - df_redcap (pd.DataFram): REDCAP export
-                - col_date (str): column of dates in REDCap df
-                - dose_tps (list): list of timepoints to include in result
-
-            Returns:
-                - df_dosedates (pd.DataFrame): df of date-dose pairs
-        '''
-
-        assert isinstance(df_redcap, pd.DataFrame)
-        assert isinstance(col_date, str)
-
-        df_dosedates = df_redcap.loc[(df_redcap.tp.isin(dose_tps))]
-        df_dosedates = df_dosedates.rename(columns={col_date: 'my_date',})
-        df_dosedates = df_dosedates[['pID', 'tp', 'my_date']]
-        df_dosedates = df_dosedates.dropna()
-        df_dosedates = df_dosedates.drop_duplicates()
-        df_dosedates['my_date'] = pd.to_datetime(df_dosedates['my_date'])
-        df_dosedates = df_dosedates.rename(columns={'my_date': 'date',})
-        df_dosedates = df_dosedates.reset_index(drop=True)
-
-        if save!={}:
-            df_dosedates.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
-
-        return df_dosedates
-
-    @staticmethod #untested
-    def format_bsl_vitals(df_redcap:pd.DataFrame, **save) -> pd.DataFrame:
-        ''' Deal with inconcistsent naming convention between baseline and post-baseline vitals measures.
-            Need to call this before get_df_vitals().
+    @staticmethod
+    def get_df_measure(df_redcap:pd.DataFrame, measure_param:dict, cols_to_keep:list[str]=commons_config.cols_to_keep, **save)-> pd.DataFrame:
+        ''' Returns all completed scores of a given measure in long-formatted df.
+            Rows are removed that have missing value in any of the pID/tp/score columns.
 
             Args:
-                - df_redcap (pd.DataFrame): raw REDCAP export df
+                - df_redcap: raw export from REDCap
+                - cols_to_keep: what columns from the REDCAP df should be kept in returned df
+                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
+                        - 'instrument': value of the "instrument" column in the returned df;
+                        - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
+                        - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
+                        - 'col_score': column name in df_redcap, which stores score
+                        - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
                 - save (dict; optional): dictionary with keys dir_out fname_out that determine where output is saved
 
             Returns:
-                - df_vitals (pd.DataFrame): long-form dataframe of vitals data
+                - df (pd.DataFrame): longform df with all scores of the defined measure
         '''
 
         assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(measure_param, dict)
+        assert all([field in measure_param.keys() for field in
+            ['instrument', 'measure', 'timing', 'col_complete', 'col_score',]])
+        assert isinstance(cols_to_keep, list)
 
-        # Change name of baseline columns to fit naming convention of other columns
-        df_redcap = df_redcap.rename(
-            columns={
-                'vs_bl_dia': 'vs_dose0_dia1',
-                'vs_bl_sys': 'vs_dose0_sys1',
-                'vs_bl_hr': 'vs_dose0_hr1',}, inplace=False)
+        # define variables
+        df = df_redcap.copy()
+        col_score = measure_param['col_score']
+        col_complete = measure_param['col_complete']
 
-        df_redcap.loc[:, 'vs_dose0_dia1'] = pd.to_numeric(df_redcap['vs_dose0_dia1'])
-        df_redcap.loc[:, 'vs_dose0_sys1'] = pd.to_numeric(df_redcap['vs_dose0_sys1'])
-        df_redcap.loc[:, 'vs_dose0_hr1'] = pd.to_numeric(df_redcap['vs_dose0_hr1'])
+        # reduce dataframe
+        df = df.loc[(df[col_complete]==2)]
+        df = df[cols_to_keep + [col_score]]
 
-        # create second reading for bsl measures for consistency
-        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_dia1')+1, column='vs_dose0_dia2', value=math.nan)
-        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_sys1')+1, column='vs_dose0_sys2', value=math.nan)
-        df_redcap.insert(loc=df_redcap.columns.get_loc('vs_dose0_hr1')+1, column='vs_dose0_hr2', value=math.nan)
+        # rename / add bookkeeping columns
+        df.rename(columns={col_score: 'score'}, inplace=True)
+        df['instrument'] = measure_param['instrument']
+        df['measure'] = measure_param['measure']
+        df['timing'] = measure_param['timing']
 
-        ### Save, return output
+        # deal with time
+        if 'time' in measure_param.keys():
+            df['time'] = measure_param['time']
+        else:
+            df['time'] = math.nan
+
+        ### Cleanup, save, return output
+        df = df.dropna(subset=(['pID', 'tp', 'score']))
+        df['score'] = df['score'].astype('float64')
+        df['time'] = df['time'].astype('float64')
+        df = df[cols_to_keep+['timing','instrument','measure','time','score']]
+        df.reset_index(inplace=True, drop=True)
+
         if save!={}:
-            df_redcap.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
+            df.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
 
-        return df_redcap
+        return df
 
-    @staticmethod 
+    @staticmethod
+    def calc_sum_scores(df_redcap:pd.DataFrame, measure_param:dict) -> pd.DataFrame:
+        ''' Calculates the scores for measures defined by measure_param, see config for formatting.
+
+            Args:
+                - df_redcap (pd.DataFrame): raw export from REDCap
+                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
+                    - 'instrument': value of the "instrument" column in the returned df;
+                    - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
+                    - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
+                    - 'col_score': column name in df_redcap, which stores score
+                    - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
+
+            Returns:
+                - df_redcap (pd.DataFrame): REDCap df with scores added
+        '''
+
+        col_complete = measure_param['col_complete']
+        sum_score = measure_param['sum_score']
+        col_items = sum_score['col_items']
+        reverse_items = sum_score['reverse_items']
+        min_score = sum_score['min_score']
+        max_score = sum_score['max_score']
+        col_score = measure_param['col_score']
+
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(col_items, list)
+        assert all([col_item in df_redcap.columns for col_item in col_items])
+        assert col_complete in df_redcap.columns
+        assert col_score not in df_redcap.columns, f"'col_score' (={measure_param['col_score']}) already deifned in REDCap df"
+
+        ### Reverse items if there is any
+        if len(reverse_items)!=0:
+            original_scores = df_redcap.loc[(df_redcap[col_complete]==2), reverse_items]
+            reverse_scores = \
+                (max_score + min_score) - df_redcap.loc[(df_redcap[col_complete]==2), reverse_items]
+            df_redcap.loc[(df_redcap[col_complete]==2), reverse_items] = reverse_scores
+
+        ### Calculate sum scores
+        df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
+
+        ### Reverse back reverse-items back to original as the column may get processed again in different contexts
+        if len(reverse_items)!=0:
+            df_redcap.loc[(df_redcap[col_complete]==2), reverse_items] = original_scores
+
+        ### Check missing items
+        rows_df_missingitems = []
+        for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
+
+            cols_missing=[]
+            for col in col_items:
+                assert (eval(f'row.{col}') is not None)
+                if (math.isnan(eval(f'row.{col}'))):
+                    cols_missing.append(col)
+
+            if cols_missing!=[]:
+                rows_df_missingitems.append([row.pID, row.tp, measure_param['measure'], cols_missing])
+                df_redcap.loc[row.Index, col_score] = math.nan
+
+        ### Return
+        df_missingitems = pd.DataFrame(columns=['pID', 'tp', 'measure', 'missing_items'], data=rows_df_missingitems)
+        return df_redcap, df_missingitems
+
+    @staticmethod
+    def add_delta_scores(df_master:pd.DataFrame, delta_from_tp:str='bsl', delta_from_time:int=0) -> pd.DataFrame:
+        ''' Add delta_score column to a longform trial dataframe.
+
+            For each measure, the baseline reference is chosen once (not per row):
+                - If the measure has NO time column populated (all rows have
+                  time=NaN for that measure), baseline is the row at
+                  tp == delta_from_tp for the same (pID, measure). delta_score
+                  is score - baseline_score for all rows of that measure.
+                - If the measure has time (all rows have a non-NaN numeric time
+                  for that measure), baseline is the row at
+                  time == delta_from_time for the same (pID, measure, tp).
+                  delta_score is score - baseline_score for all rows at that tp.
+
+            Vectorized via groupwise merges rather than per-row iteration.
+
+            Args:
+                - df_master (pd.DataFrame): longform df of trial data
+                - delta_from_tp (str): value in 'tp' that designates baseline
+                    for measures without time.
+                - delta_from_time (int): value in 'time' that designates
+                    baseline for measures with time.
+
+            Returns:
+                - df_master (pd.DataFrame): input df with 'delta_score' column added
+        '''
+
+        assert isinstance(df_master, pd.DataFrame)
+        assert isinstance(delta_from_tp, str)
+        assert isinstance(delta_from_time, int)
+
+        df_master = df_master.copy()
+        df_master['delta_score'] = math.nan
+
+        undecided_has_time = []
+        pieces = []
+
+        for measure, sub in df_master.groupby('measure', sort=False):
+            try:
+                has_time = Helpers.has_time(df_master, measure)
+            except UndecidedHasTime as e:
+                undecided_has_time.append(e.measure)
+                pieces.append(sub)
+                continue
+
+            if has_time:
+                bsl = (sub.loc[sub['time'] == delta_from_time, ['pID', 'tp', 'score']]
+                          .rename(columns={'score': '_bsl_score'}))
+                merged = sub.merge(bsl, on=['pID', 'tp'], how='left')
+            else:
+                bsl = (sub.loc[sub['tp'] == delta_from_tp, ['pID', 'score']]
+                          .rename(columns={'score': '_bsl_score'}))
+                merged = sub.merge(bsl, on=['pID'], how='left')
+
+            merged.index = sub.index
+            merged['delta_score'] = merged['score'] - merged['_bsl_score']
+            pieces.append(merged.drop(columns=['_bsl_score']))
+
+        df_master = pd.concat(pieces).sort_index()
+
+        if undecided_has_time:
+            undecided_has_time = set(undecided_has_time)
+            print(f"Can not decide whether measure has time: {[measure for measure in undecided_has_time]}")
+
+        return df_master
+
+    @staticmethod
     def get_df_vitals(df_redcap:pd.DataFrame, measure_param:dict, **save) -> pd.DataFrame:
         ''' Special case of get_df_measure() to deal with the idiosyncrasies of vitals measures.
             Specifically, there is either 1 or 2 readings of vitals.
@@ -283,7 +434,7 @@ class DataWrangl():
         assert isinstance(df_redcap, pd.DataFrame)
         assert isinstance(measure_param, dict)
         assert all([field in measure_param.keys() for field in
-            ['instrument', 'measure', 'measure_type', 'col_complete', 'col_score',]])
+            ['instrument', 'measure', 'timing', 'col_complete', 'col_score',]])
 
         df = df_redcap.loc[(df_redcap[measure_param['col_complete']]==2)]
         rows_vitals = []
@@ -292,8 +443,8 @@ class DataWrangl():
             pID = row.pID
             tp = row.tp
 
-            score1 = eval(f'row.{measure_param['col_score']}1')
-            score2 = eval(f'row.{measure_param['col_score']}2')
+            score1 = eval(f'row.{measure_param['col_score']}_1') # double check if the format matches with REDCap survey, lab is inconsistent across trials
+            score2 = eval(f'row.{measure_param['col_score']}_2')
 
             if (not math.isnan(score1)) and (math.isnan(score2)):
                 score = score1 # no second measure was taken
@@ -307,7 +458,7 @@ class DataWrangl():
             rows_vitals.append([
                 pID,
                 tp,
-                'in_dose',
+                'in-dose',
                 measure_param['instrument'],
                 measure_param['measure'],
                 measure_param['time'],
@@ -316,7 +467,7 @@ class DataWrangl():
         df_vitals = pd.DataFrame(columns=[
             'pID',
             'tp',
-            'measure_type',
+            'timing',
             'instrument',
             'measure',
             'time',
@@ -326,7 +477,7 @@ class DataWrangl():
         df_vitals.dropna(subset=['pID', 'tp', 'score'], inplace=True)
         df_vitals['score'] = df_vitals['score'].astype('float64')
         df_vitals['time'] = df_vitals['time'].astype('float64')
-        df_vitals = df_vitals[['pID','tp','measure_type','instrument','measure','time','score']]
+        df_vitals = df_vitals[['pID','tp','timing','instrument','measure','time','score']]
         df_vitals.reset_index(inplace=True, drop=True)
 
         if save!={}:
@@ -371,251 +522,6 @@ class DataWrangl():
         df.reset_index(inplace=True)
 
         return df
-
-    @staticmethod
-    def calc_scores(df_redcap:pd.DataFrame, measure_param:dict) -> pd.DataFrame:
-        ''' Calculates the scores for measures defined by measure_param, see config for formatting.
-
-            Args:
-                - df_redcap (pd.DataFrame): raw export from REDCap
-                - measure_param (dict): dictionary that defines the measure, see config.py for example dict. Need to have keys:
-                        - 'instrument': value of the "instrument" column in the returned df;
-                        - 'measure': value of the "measure" column in the returned df; "measure" is typcially name of the scale or a subscale
-                        - 'col_complete': column name in df_redcap, which tracks if row was completed; if set to None, completion is not checked, if a str is provided only rows are kept where its value is 2
-                        - 'col_score': column name in df_redcap, which stores score
-                        - 'type': value of the "type" column in the returned df; usefull to distinguish structure of measures
-
-            Returns:
-                - df_redcap (pd.DataFrame): REDCap df with scores added
-        '''
-
-        col_complete = measure_param['col_complete']
-        col_items = measure_param['col_items']
-        col_score = measure_param['col_score']
-
-        assert isinstance(df_redcap, pd.DataFrame)
-        assert isinstance(col_items, list)
-        assert all([col_item in df_redcap.columns for col_item in col_items])
-        assert isinstance(col_score, str)
-        assert col_complete in df_redcap.columns
-
-        ### Reverse items if there is any
-        if 'reverse_items' in measure_param:
-            assert all([limit in measure_param for limit in ['min_score', 'max_score']])
-            original_scores = df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
-            reverse_scores = \
-                (measure_param['max_score'] + measure_param['min_score']) - \
-                df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']]
-            df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']] = reverse_scores
-
-        ### Calculate sum scores
-        df_redcap.loc[(df_redcap[col_complete]==2), col_score] = df_redcap.loc[(df_redcap[col_complete]==2), col_items].sum(axis=1)
-
-        ### Reverse back reverse-items back to original as the column may get processed again in different contexts
-        if 'reverse_items' in measure_param:
-            df_redcap.loc[(df_redcap[col_complete]==2), measure_param['reverse_items']] = original_scores
-
-        ### Normalize sum scores
-        if 'norm_factor' in measure_param:
-            df_redcap.loc[(df_redcap[col_complete]==2), col_score] = \
-            df_redcap.loc[(df_redcap[col_complete]==2), col_score]/measure_param['norm_factor']
-
-        ### Check missing items
-        rows_df_missingitems = []
-        for row in df_redcap.loc[(df_redcap[col_complete]==2)].itertuples():
-
-            cols_missing=[]
-            for col in col_items:
-                assert (eval(f'row.{col}') is not None)
-                if (math.isnan(eval(f'row.{col}'))):
-                    cols_missing.append(col)
-
-            if cols_missing!=[]:
-                rows_df_missingitems.append([row.pID, row.tp, measure_param['measure'], cols_missing])
-                df_redcap.loc[row.Index, col_score] = math.nan
-
-        ### Return
-        df_missingitems = pd.DataFrame(columns=['pID', 'tp', 'measure', 'missing_items'], data=rows_df_missingitems)
-        return df_redcap, df_missingitems
-
-    @staticmethod
-    def add_delta_scores(df_master:pd.DataFrame, delta_from_tp:str='bsl', delta_from_time:int=0) -> pd.DataFrame:
-        ''' For every pID, tp, measure triplet add delta_score from timepoint defined by delta_from_tp if the row's measure has no time (i.e. all rows have time=nan)
-            For every pID, tp, measure triplet add delta_score from the time defined by delta_from_time at the given timepoint if the row's measure has time (i.e. all rows have a non-nan time)
-
-            TODO: optimize, right now its brute force. May take some time for larger dfs
-
-            Args:
-                - df (pd.DataFrame): longform df of trial data
-                - delta_from_tp (str): what value in "tp" designates baseline
-                - delta_from_tp (str): what value in "time" designates start
-
-            Returns:
-                - df (pd.DataFrame): longform df of trial data with delta_score added
-        '''
-
-        assert isinstance(df_master, pd.DataFrame)
-        assert isinstance(delta_from_tp, str)
-        assert isinstance(delta_from_time, int)
-
-        df_master['delta_score'] = math.nan
-        cidx_score = df_master.columns.get_loc('score')
-        cidx_dltscore = df_master.columns.get_loc('delta_score')
-        undecided_has_time=[]
-
-        for row in df_master.itertuples():
-
-            try:
-                has_time = Helpers.has_time(df_master, row.measure)
-            except UndecidedHasTime as e:
-                undecided_has_time.append(e.measure)
-                continue
-
-            # Find baseline value
-            if has_time:
-                ridx_bsl = df_master.loc[
-                    (df_master.pID == row.pID) &
-                    (df_master.measure == row.measure) &
-                    (df_master.tp == row.tp) &
-                    (df_master.time == delta_from_time)].index
-            else:
-                ridx_bsl = df_master.loc[
-                    (df_master.pID == row.pID) &
-                    (df_master.measure == row.measure) &
-                    (df_master.tp == delta_from_tp)].index
-
-            assert ((len(ridx_bsl)==1) or (len(ridx_bsl)==0))
-
-            if len(ridx_bsl)==0:
-                continue
-            else:
-                ridx_bsl = ridx_bsl[0]
-
-            # Add delta score
-            bsl_score = df_master.iloc[ridx_bsl, cidx_score]
-            tp_score = row.score
-            df_master.iloc[row.Index, cidx_dltscore] = tp_score-bsl_score
-
-        # Warn user
-        if len(undecided_has_time)!=0:
-            undecided_has_time = set(undecided_has_time)
-            print(f"Can not decide whether measure has time: {[measure for measure in undecided_has_time]}")
-
-        return df_master
-
-    @staticmethod #untested
-    def get_df_aes(df_redcap, df_redcap_datalabels, **save):
-        
-        # Switching out meddra codes for titles
-        cidx_meddra = df_redcap.columns.get_loc('ae_1')
-        df_redcap.iloc[:, cidx_meddra] = df_redcap_datalabels.iloc[:, cidx_meddra]
-        
-        df_ae = df_redcap[df_redcap.adverse_event_log_complete==2]
-        #df_ae = df_ae[~df_ae['pID'].str.contains('test', case=False)]
-
-        ### Rename columns
-        df_ae = df_ae[["pID", "tp"] + [col for col in df_ae.columns if "ae_" in col]]
-        df_ae = df_ae.rename(columns={
-            'ae_1':  'meddra',
-            'ae_8':  'description',
-            'ae_2':  'category',
-            'ae_10': 'start_date',
-            'ae_13': 'last_dose_date',
-            'ae_13a___1': 'is_predrug',
-            'ae_16': 'was_intervention',
-            'ae_9':  'intervention_desc',
-            'ae_19': 'outcome', 
-            'ae_20': 'severity',
-            'ae_21': 'is_serious',
-            'ae_22': 'outcome_of_serious',
-            'ae_26': 'related_drug',
-            'ae_27': 'related_procedures',
-            'ae_28': 'action',
-            'ae_30': 'date_attestation',})
-
-        ### Set end_date to the most recent date among follow-ups
-        df_ae['end_date'] = None
-        fu_cols = [f"ae_fu{i}_8" for i in range(1, 11) if f"ae_fu{i}_8" in df_ae.columns] + ['ae_12']
-        df_ae['end_date'] = df_ae[fu_cols].apply(lambda row: pd.to_datetime(row, errors='coerce').max(), axis=1)
-
-        ### Compute is_expected_combined using ae_24 and ae_25
-        conds = [
-            (df_ae['ae_24'] == 1) & (df_ae['ae_25'] == 1),
-            (df_ae['ae_24'] == 1) & (df_ae['ae_25'] == 2),
-            (df_ae['ae_24'] == 1) & (df_ae['ae_25'].isna()),
-            (df_ae['ae_24'] == 2)]
-        choices = [
-            'Expected result of study drug(s)',
-            'Expected result of study procedure(s)',
-            'Expected, but neither "expected of drug" nor "expected of procedure" was selected',
-            'Not Expected']
-        df_ae['is_expected'] = np.select(conds, choices, default='Not Expected')
-
-        ### Compute serious outcomes
-        df_ae['outcome_serious'] = df_ae.apply(DataWrangl.get_outcome_serious, axis=1)
-
-        ### Recode responses
-        df_ae["severity"] = df_ae["severity"].replace({
-            1: "Mild",
-            2: "Moderate",
-            3: "Severe",
-            4: "Life-threatening"})
-        df_ae["category"] = df_ae["category"].replace({
-            1: "Cardiovascular",
-            2: "Respiratory",
-            3: "Gastrointestinal",
-            4: "Genitourinary",
-            5: "Musculoskeletal",
-            6: "Dermatologic",
-            7: "Neurologic",
-            8: "Hematologic"})
-        df_ae["related_drug"] = df_ae["related_drug"].replace({
-            0: "Not Related",
-            1: "Possible",
-            2: "Probable",
-            3: "Definite"})
-        df_ae["related_procedures"] = df_ae["related_procedures"].replace({
-            0: "Not Related",
-            1: "Possible",
-            2: "Probable",
-            3: "Definite"})
-        df_ae["action"] = df_ae["action"].replace({
-            1: "PI has decided to withdraw the participant from the study.",
-            2: "PI has decided to withhold further drug administration.",
-            3: "Participant has decided to withdraw from the study.",
-            4: "No action on enrollment by study team or participant.",}) 
-        df_ae["outcome"] = df_ae["outcome"].replace({
-            1: "Life-threatening/Fatal",
-            2: "Chronic/not expected to recover",
-            3: "Expected to recover prior to end of participation",
-            4: "Expected to recover after end of participation",
-            5: "Recovered at time of initial report",}) 
-
-        ### Organize columns
-        df_ae = df_ae[[
-            'pID', 'meddra', 'category', 'description', 
-            'severity', 'is_serious', 
-            'was_intervention', 'intervention_desc',
-            'is_expected', 'related_drug', 'related_procedures',
-            'start_date', 'end_date', 'last_dose_date', 'is_predrug', 'action','outcome', 'outcome_serious',
-            ]]
-
-        if save!={}: 
-            df_ae.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
-
-        return df_ae
-
-    @staticmethod # move to Helpers
-    def get_outcome_serious(row):
-        serious_map = {
-            'ae_22___1': 'Death',
-            'ae_22___2': 'Life-threatening',
-            'ae_22___3': 'Requires or prolongs hospitalization (does not include ED visits w/o admission)',
-            'ae_22___4': 'Disability or permanent damage',
-            'ae_22___5': 'Congenital abnormality/birth defect or cancer',
-            'ae_22___6': 'Required intervention (medical or surgical) to prevent permanent impairment or damage or prevent outcome listed above'}
-        outcomes = [serious_map[col] for col in serious_map if row.get(col, 0) == 1]
-        return '; '.join(outcomes) if outcomes else ''
 
 
 class Analysis():
@@ -735,7 +641,7 @@ class Analysis():
                 df_pvalues=df_pvalues,
                 **kwargs,)
 
-    @staticmethod # untested
+    @staticmethod 
     def get_missing_scores(df_master, measure_params, **save):
         ''' Get df of missing scores
         Args:
@@ -747,88 +653,76 @@ class Analysis():
             - df_res (pd.DataFrame): df of missing scores
         '''
 
-        df_res = pd.DataFrame(columns=['pID', 'tp', 'measure',])
+        df_missing_scores = pd.DataFrame(columns=['pID', 'tp', 'measure', 'time'])
 
         for measure_param in measure_params:
 
-            if 'tps' not in measure_param.keys():
-                print(f'tps are not defined for {measure_param['measure']}; cannot find missing measurs.')
-                continue
+            if measure_param['has_time'] is True:
+                for pID, tp in itertools.product(df_master.pID.unique(), measure_param['tps'],):
+                    scores = df_master.loc[
+                        (df_master.pID==pID) & 
+                        (df_master.tp==tp) & 
+                        (df_master.time==int(measure_param['time'])) & 
+                        (df_master.measure==measure_param['measure'])].score.reset_index(drop=True)
+                    
+                    if ((len(scores)==1) and (not math.isnan(scores[0]))):
+                        continue
+                    else:
+                        df_missing_scores.loc[df_missing_scores.shape[0]] = {
+                            'pID': pID,
+                            'tp': tp,
+                            'measure': measure_param['measure'],
+                            'time': measure_param['time']}
 
-            for pID, tp in itertools.product(df_master.pID.unique(), measure_param['tps']):
-                score = df_master.loc[(df_master.pID==pID) & (df_master.tp==tp) & (df_master.measure==measure_param['measure'])].score
-                nrows = df_master.loc[(df_master.pID==pID) & (df_master.tp==tp) & (df_master.measure==measure_param['measure'])].shape[0]
+            elif measure_param['has_time'] is False:
 
-                if (nrows==1) and (not math.isnan(score)):
-                    continue
+                for pID, tp in itertools.product(df_master.pID.unique(), measure_param['tps']):
 
-                df_res.loc[df_res.shape[0]] = {
-                	'pID': pID,
-                	'tp': tp,
-                	'measure': measure_param['measure'],}
+                    scores = df_master.loc[
+                        (df_master.pID==pID) & 
+                        (df_master.tp==tp) & 
+                        (df_master.measure==measure_param['measure'])].score.reset_index(drop=True)
 
-        if save!={}:
-            df_res.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
-            if df_res.shape[0] > 0:
-                print(f'Some measures are missing, see {save['fname_out']} for details.')
 
-        return df_res
+                    if ((len(scores)==1) and (not math.isnan(scores[0]))):
+                        continue
+                    else:
+                        df_missing_scores.loc[df_missing_scores.shape[0]] = {
+                            'pID': pID,
+                            'tp': tp,
+                            'measure': measure_param['measure'],
+                            'time': math.nan}
+
+        return df_missing_scores
 
     @staticmethod
-    def insert_HAMDequal_score(df, cols, delta=False):
-        ''' Inserts new columns with the HAMD17 equivalent of cols.
-            The equivalent scores will be in the new column '{col}_HAMD'
+    def get_dosedates(df_redcap, df_trtalloc, col_date='vrecord_date', **save):
+        """ Add tp/condition column to REDCap export of AEs
 
-        Args:
-            df (pd.Dataframe):
-            cols (list of str): columns that are converted to HAMD17 equivalent
-            delta (bool): if True, then delta scores are converted
+            Args:
+                - df_redcap (pd.DataFram): REDCAP export
+                - df_ae (pd.DataFram): REDCAP export of AEs
 
-        Returns:
-            df (pd.Dataframe): the original dataframe with the cols_HAMD column(s) added
-        '''
+            Returns:
+                - df_ae (pd.DataFrame):
+        """
 
-        assert isinstance(df, pd.DataFrame)
-        assert isinstance(cols, list)
-        assert isinstance(delta, bool)
+        assert isinstance(df_redcap, pd.DataFrame)
+        assert isinstance(df_trtalloc, pd.DataFrame)
 
-        cidx_scale = df.columns.get_loc('scale')
-        errors=[]
+        df_dosedates = df_redcap.loc[(df_redcap.tp=='A0')]
 
-        for col in cols:
+        df_dosedates = df_dosedates[['pID', 'tp', col_date]]
+        df_dosedates = df_dosedates.rename(columns={col_date: 'date',})
+        df_dosedates['date'] = pd.to_datetime(df_dosedates['date'])
 
-            df.insert(len(df.columns), f'{col}_HAMD', math.nan)
-            cidx_original_col = df.columns.get_loc(col)
-            cidx_hamd_eq = df.columns.get_loc(f'{col}_HAMD')
+        df_dosedates = pd.merge(df_dosedates, df_trtalloc[['pID', 'trt']], on='pID')
+        df_dosedates = df_dosedates.rename(columns={'trt':'cond'})
 
-            for row in df.itertuples():
+        if save!={}:
+            df_dosedates.to_csv(os.path.join(save['dir_out'], save['fname_out']), index=False)
 
-                if df.iloc[row.Index, cidx_original_col] in [None, math.nan]:
-                    continue
-
-                if row.scale in ['HAMD', 'HAMD17', 'GRID-HAMD',]:
-                    # No need to convert, but double check if GRID-HAMD and HAMD refer to the 17 item version!
-                    df.iloc[row.Index, cidx_hamd_eq] = df.iloc[row.Index, cidx_original_col]
-                else:
-                    # attempt to convert
-                    hamd_eq, err = Helpers.convert_toHAMD(
-                        df.iloc[row.Index, cidx_original_col],
-                        df.iloc[row.Index, cidx_scale],
-                        delta=delta)
-
-                    df.iloc[row.Index, cidx_hamd_eq] = hamd_eq
-                    if err is not None:
-                        errors.append(err)
-
-            # Round results
-            df[f'{col}_HAMD'] = round(df[f'{col}_HAMD'].copy(), 3)
-
-        # Display unique errors
-        if errors!=[]:
-            for err in set(errors):
-                print(err)
-
-        return df
+        return df_dosedates
 
 
 class Plots():
@@ -1021,52 +915,63 @@ class CheckDf():
     ''' Check assumptions about longform master DFs '''
 
     @staticmethod
-    def check_master(df_master:pd.DataFrame, trial:str, folder_exports:str, measure_types:list[str]=commons_config.measure_types) -> None:
+    def check_master(df_master:pd.DataFrame, measure_params, timings:list[str]=commons_config.timings, conditions:list[str]=['C','T'],) -> None:
         ''' Check if df_master meets all assumptions '''
 
-        CheckDf.check_duplicates(df_master, trial, folder_exports)
-        CheckDf.check_conditions(df_master)
-        CheckDf.check_indose_time(df_master)
-        CheckDf.check_measure_types(df_master, measure_types)
+        df_duplicate_rows = CheckDf.check_duplicate_rows(df_master)
+        CheckDf.check_conditions(df_master, conditions)
+        CheckDf.check_time(df_master, measure_params)
+        CheckDf.check_timings(df_master, timings)
+
+        return  df_duplicate_rows
 
     @staticmethod
-    def check_duplicates(df_master:pd.DataFrame, trial:str, folder_exports:str, cols=commons_config.cols_checkduplicates) -> None:
+    def check_duplicate_rows(df_master:pd.DataFrame, cols=commons_config.cols_checkduplicates) -> None:
         ''' Check if there are duplicate rows '''
-
-        df_master = df_master[cols]
-        duplicates = df_master[df_master.duplicated(keep=False)]
-        if duplicates.shape[0]!=0:
-            print(f'Duplicate rows, see exports/{trial}_duplicates.csv.')
-            duplicates.to_csv(os.path.join(folder_exports, f'{trial}_duplicates.csv'), index=False)
+        df = df_master[cols]
+        df_duplicates = df[df.duplicated(keep=False)]
+        return df_duplicates
 
     @staticmethod
-    def check_conditions(df_master:pd.DataFrame, tps_wo_condition=['bsl', 'ltfu']) -> None:
+    def check_conditions(df_master:pd.DataFrame, conditions) -> None:
         ''' Check if there is a condition for every tp except baseline '''
-
-        assert all([condition in [None, ''] for condition in df_master.loc[(df_master.tp.isin(tps_wo_condition))].condition])
-        assert all([isinstance(condition, str) for condition in df_master.loc[(~df_master.tp.isin(tps_wo_condition))].condition])
+        assert all([condition in conditions for condition in df_master.condition])
 
     @staticmethod
-    def check_indose_time(df_master:pd.DataFrame) -> None:
-        ''' Check if there is time for all in_dose measures and that there is
-            no time for not in_dose measures
+    def check_time(df_master:pd.DataFrame, measure_params) -> None:
+        ''' Check the 'time' column per measure based on its has_time flag:
+            - has_time=True: every row for that measure must have a numeric
+              (non-NaN) time value.
+            - has_time=False: every row for that measure must have time=NaN.
         '''
 
-        assert all(math.isnan(time) for time in df_master.loc[(df_master.measure_type!='in_dose')].time.tolist())
-        assert all(isinstance(time, float) for time in df_master.loc[(df_master.measure_type=='in_dose')].time.tolist())
+        for measure_param in measure_params:
+            measure = measure_param['measure']
+            times = df_master.loc[df_master.measure == measure, 'time']
+            if times.empty:
+                continue
+
+            if measure_param['has_time'] is True:
+                assert pd.to_numeric(times, errors='coerce').notna().all(), (
+                    f"Measure '{measure}' has has_time=True but some rows have non-numeric/NaN time.")
+            elif measure_param['has_time'] is False:
+                assert times.isna().all(), (
+                    f"Measure '{measure}' has has_time=False but some rows have a non-NaN time.")
+            else:
+                assert False, f"Measure '{measure}' has invalid has_time value: {measure_param['has_time']!r}"
 
     @staticmethod
-    def check_measure_types(df_master:pd.DataFrame, measure_types:list[str]=commons_config.measure_types) -> None:
-        ''' Check if all measure_type is one of the expected values:
+    def check_timings(df_master:pd.DataFrame, timings:list[str]=commons_config.timings) -> None:
+        ''' Check if all timing is one of the expected values:
             -bsl: measured only at baseline, eg. demographic variables
             -change: measured both before and after treatment, eg. depressions scores
-            -in_dose: measured during dosing session, thus, have a value for time, eg. vitals
+            -in-dose: measured during dosing session, thus, have a value for time, eg. vitals
             -post_dose: measured only post-dosing, eg. measures of trip quality like MEQ
             -post_trt: measured only post-treatment, eg. treatment satisfaction
         '''
 
         assert isinstance(df_master, pd.DataFrame)
-        assert all([measure_type in measure_types for measure_type in df_master.measure_type])
+        assert all([timing in timings for timing in df_master.timing])
 
 
 class Helpers():

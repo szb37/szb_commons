@@ -2,7 +2,7 @@ import itertools
 import matplotlib.pyplot as plt
 
 ### Miscs settings
-measure_types = ['bsl', 'change', 'in_dose', 'post_dose', 'post_trt']
+timings = ['bsl', 'change', 'in_dose', 'post_dose', 'post_trt']
 cols_checkduplicates = ['pID', 'tp', 'measure', 'time']
 cols_to_keep = ['pID', 'tp']
 corr_methods = ['pearson', 'spearman', 'kendall']
@@ -17,12 +17,12 @@ ticklabel_fontsize = 14
 save_SVG = True
 save_PNG = True
 
-# Renaming of redcap columns 
+# Rename REDCap columns
 redcap_cols_to_master_cols = {
-    'participant_id': 'pID',
     'record_id': 'pID',
-    'redcap_event_name': 'tp',}
-
+    'redcap_event_name': 'tp',
+    'redcap_repeat_instrument':	'repeat_instrument',
+    'redcap_repeat_instance': 'repeat_instance',}
 
 
 ### Examples to show format of measure_params
@@ -34,7 +34,7 @@ measure_params = [
     {
         'instrument': '11dASC',             # value for the Instrument column in df_master
         'measure': '11dASC_unity',          # value for the Measure column in df_master
-        'measure_type': 'post_dose',        # value for the Type column in df_master
+        'timing': 'post_dose',        # value for the Type column in df_master
         'col_complete': 'dasc_complete',    # column that tracks completions in df_redcap
         'col_score': 'fivedasc_util_total', # column that contains scores in df_redcap
     },]
@@ -46,7 +46,7 @@ indose_measure_params = [
     {
         'instrument': 'INTENSITY',                   # value for instrument column in df_master
         'measure': f'INTENSITY_{rater}',             # value for measure column in df_master
-        'measure_type': 'in_dose',                   # value for measure_type column in df_master
+        'timing': 'in_dose',                   # value for measure_type column in df_master
         'col_complete': 'intensity_rating_complete', # completion column in df_redcap
         'col_score': f'ir_{rater}intensity{time}',   # score column in df_redcap
         'time': time,                                # value for time column in df_master
@@ -59,7 +59,7 @@ vitals_measure_params = [
     {
         'instrument': 'VITALS',
         'measure': f'VITALS_{measure}',
-        'measure_type': 'in_dose',
+        'timing': 'in_dose',
         'col_complete': 'vitals_record_complete',
         'col_score': f'vs_dose{time}_{measure}',
         'time': time,

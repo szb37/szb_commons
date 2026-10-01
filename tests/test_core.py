@@ -32,7 +32,7 @@ class GetDfMeasureTests(DataWranglTests):
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v0.csv')),
             measure_param = {
                 'instrument': 'EBI',
-                'measure_type': 'post_dose',
+                'timing': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': None,
                 'col_score': 'ebi_score',})
@@ -52,7 +52,7 @@ class GetDfMeasureTests(DataWranglTests):
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
             measure_param = {
                 'instrument': 'EBI',
-                'measure_type': 'post_dose',
+                'timing': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -70,7 +70,7 @@ class GetDfMeasureTests(DataWranglTests):
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
             measure_param = {
                 'instrument': 'EBI',
-                'measure_type': 'post_dose',
+                'timing': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': None,
                 'col_score': 'ebi_score',})
@@ -93,7 +93,7 @@ class GetDfMeasureTests(DataWranglTests):
             df_redcap = df_redcap1,
             measure_param = {
                 'instrument': 'EBI',
-                'measure_type': 'post_dose',
+                'timing': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -112,7 +112,7 @@ class GetDfMeasureTests(DataWranglTests):
             cols_to_keep = ['pID', 'tp', 'ebi_1', 'ebi_2'],
             measure_param = {
                 'instrument': 'EBI',
-                'measure_type': 'post_dose',
+                'timing': 'post_dose',
                 'measure': 'EBI',
                 'col_complete': 'ebi_complete',
                 'col_score': 'ebi_score',})
@@ -198,10 +198,10 @@ class GetDfVitalsTests(DataWranglTests):
 
 class CalcScoresTests(DataWranglTests):
 
-    def test_case0_calc_scores(self):
+    def test_case0_calc_sum_scores(self):
         ''' Case of not summing anything '''
 
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
             measure_param = {
                 'col_items': [],
@@ -209,16 +209,16 @@ class CalcScoresTests(DataWranglTests):
                 'col_complete': 'ebi_complete'})
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case0.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case0.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_case1_calc_scores(self):
+    def test_case1_calc_sum_scores(self):
         ''' Intended case '''
 
         # Calculate
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v1.csv')),
             measure_param = {
                 'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
@@ -226,16 +226,16 @@ class CalcScoresTests(DataWranglTests):
                 'col_complete': 'ebi_complete',})
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case1.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case1.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_case2_calc_scores(self):
+    def test_case2_calc_sum_scores(self):
         ''' Test normalization '''
 
         # Calculate
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             measure_param = {
                 'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
@@ -243,14 +243,14 @@ class CalcScoresTests(DataWranglTests):
                 'col_complete': 'ebi_complete',})
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case2.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case2.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
         ### Normalize by_nitems case
         # Calculate
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             measure_param = {
                 'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
@@ -260,14 +260,14 @@ class CalcScoresTests(DataWranglTests):
                 #'normalize': 'by_nitems',})
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case21.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case21.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
         ### Normalize by_maxscore case
         # Calculate
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             measure_param = {
                 'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
@@ -278,14 +278,14 @@ class CalcScoresTests(DataWranglTests):
                 #'max_item_score': 5,},)
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case22.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case22.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
         ### Normalize by_maxscore case; change max value
         # Calculate
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = pd.read_csv(os.path.join(folders.fixtures_in, 'df_redcap_v2.csv')),
             measure_param = {
                 'col_items': ['ebi_1', 'ebi_2', 'ebi_3', 'ebi_4', 'ebi_5', 'ebi_6',],
@@ -296,12 +296,12 @@ class CalcScoresTests(DataWranglTests):
                 #'max_item_score': 2,})
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case23.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case23.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
-    def test_case3_calc_scores(self):
+    def test_case3_calc_sum_scores(self):
         ''' Missing data case. Should also produce print (use "python -m pytest -s .\tests\" to see in terminal):
                 "Missing items from sum score calculation at row index (will skip rows from sum scores): [0, 1]"
         '''
@@ -312,7 +312,7 @@ class CalcScoresTests(DataWranglTests):
         df_redcap.iloc[1, 3] = None
 
         # Calculate
-        df, df_missingitems = core.DataWrangl.calc_scores(
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(
             df_redcap = df_redcap,
             measure_param = {
                 'measure': 'mock_measure',
@@ -321,17 +321,17 @@ class CalcScoresTests(DataWranglTests):
                 'col_complete': 'ebi_complete',})
 
         # Get manual solution & compare
-        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_scores_case3.csv'))
+        df_solution = pd.read_csv(os.path.join(folders.fixtures_out, 'df_solution_calc_sum_scores_case3.csv'))
         df_solution.reset_index(drop=True, inplace=True)
         df.reset_index(drop=True, inplace=True)
         assert df_solution.equals(df)
 
     ''' Test revserse scoring '''
-    def test_case4_calc_scores(self):
+    def test_case4_calc_sum_scores(self):
 
         measure_param = {
             'instrument': 'mock',
-            'measure_type': 'change',
+            'timing': 'change',
             'col_complete': 'complete',
             'measure': 'mock',
             'col_score': 'mock_score_local',
@@ -364,14 +364,14 @@ class CalcScoresTests(DataWranglTests):
         })
 
         # Calculate & compare to solution
-        df, df_missingitems = core.DataWrangl.calc_scores(df, measure_param)
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(df, measure_param)
         assert df_solution.equals(df)
 
-    def test_case5_calc_scores(self):
+    def test_case5_calc_sum_scores(self):
 
         measure_param = {
             'instrument': 'mock',
-            'measure_type': 'change',
+            'timing': 'change',
             'col_complete': 'complete',
             'measure': 'mock',
             'col_score': 'mock_score_local',
@@ -404,14 +404,14 @@ class CalcScoresTests(DataWranglTests):
         })
 
         # Calculate & compare to solution
-        df, df_missingitems = core.DataWrangl.calc_scores(df, measure_param)
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(df, measure_param)
         assert df_solution.equals(df)
 
-    def test_case6_calc_scores(self):
+    def test_case6_calc_sum_scores(self):
 
         measure_param = {
             'instrument': 'mock',
-            'measure_type': 'change',
+            'timing': 'change',
             'col_complete': 'complete',
             'measure': 'mock',
             'col_score': 'mock_score_local',
@@ -444,7 +444,7 @@ class CalcScoresTests(DataWranglTests):
         })
 
         # Calculate & compare to solution
-        df, df_missingitems = core.DataWrangl.calc_scores(df, measure_param)
+        df, df_missingitems = core.DataWrangl.calc_sum_scores(df, measure_param)
         assert df_solution.equals(df)
 
 
