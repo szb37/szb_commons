@@ -226,4 +226,3 @@ dependencies:
   - zlib=1.2.13=hcfcfb64_5
   - zstandard=0.23.0=py312h4fc1ca9_1
   - zstd=1.5.6=h8880b57_0
-prefix: C:\Users\szb37\miniconda3\envs\commons

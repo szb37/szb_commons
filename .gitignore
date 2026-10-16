@@ -1,8 +1,8 @@
-### Own gitignores
+### Repo-specific: local scratch code and data are never committed
 **/private/**
 data/**
 
-### Python gitignore from: https://github.com/github/gitignore/blob/main/R.gitignore
+### Python gitignore from: https://github.com/github/gitignore/blob/main/Python.gitignore
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

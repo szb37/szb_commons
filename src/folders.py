@@ -1,3 +1,7 @@
+'''
+Absolute paths of the codebase folders, independent of the working directory.
+'''
+
 import os
 
 src = os.path.dirname(os.path.abspath(__file__))
